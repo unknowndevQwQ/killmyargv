@@ -1,0 +1,18 @@
+[package]
+name = "killmyargv"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+libc = "0.2.141"
+log = "0.4.17"
+spdlog-rs = {features = ["log"], version = "0.3.12"}
+thiserror = "1.0.40"
+
+[features]
+default = ["clobber_environ", "stack_walking", "replace_argv_element"]
+clobber_environ = []
+comp_argv = []
+stack_walking = []
+force_walking = []
+replace_argv_element = []
