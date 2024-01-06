@@ -21,7 +21,8 @@ fn main() {
 
     // Logs will be output to `custom_logger`.
     let proxy: &'static LogCrateProxy = log_crate_proxy();
-    proxy.set_logger(Some(custom_logger));
+    custom_logger.set_level_filter(spdlog::LevelFilter::All);
+    //proxy.set_logger(Some(custom_logger));
 
     let mem = KillMyArgv::new().expect("msg");
     fn printenv() {
@@ -63,6 +64,5 @@ fn main() {
     println!("set le argv");
     printenv();
     thread::sleep(time::Duration::from_secs(3));
-    trace!("log?");
     println!("The end.");
 }
