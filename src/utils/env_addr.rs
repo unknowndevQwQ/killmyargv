@@ -48,16 +48,25 @@ pub(super) fn addr() -> Option<MemInfo> {
     unsafe {
         let envp = *environ();
         let mut environ = envp;
-        dbg!(environ, *environ); // I often forget: Where did the number of elements go?
+        trace!("environ ptr: {environ:?} {:?}", *environ); // I often forget: Where did the number of elements go?
         if !environ.is_null() && !(*environ).is_null() {
             let mut element = 0;
-            dbg!(element, environ, *environ);
+            trace!(
+                "frist env: element: {element}, ptr: {environ:?} {:?}",
+                *environ
+            );
             while !(*environ).is_null() {
-                dbg!(element, environ, *environ);
+                trace!(
+                    "currter env: element: {element}, ptr: {environ:?} {:?}",
+                    *environ
+                );
                 environ = environ.add(1);
                 element += 1;
                 if (*environ).is_null() {
-                    dbg!(element, environ, *environ);
+                    trace!(
+                        "end env: element: {element}, ptr: {environ:?} {:?}",
+                        *environ
+                    );
                     environ = envp;
                     element -= 1; // Eliminate the last element that points to null.
                     break;
@@ -75,7 +84,9 @@ pub(super) fn addr() -> Option<MemInfo> {
                     // Decide elsewhere whether to exclude nul.
                     byte_len += val_len;
 
-                    dbg!(byte_len, val_ptr, val_len, val_ptr.add(val_len - 1));
+                    trace!("env collect: recorded len={byte_len}, ptr={val_ptr:?}, len={val_len}, next ptr={:?}",
+                        val_ptr.add(val_len - 1)
+                    );
                     if i + 1 == element {
                         // It is assumed that environ must never have an element
                         // of length 0, otherwise unpredictable results would occur.
@@ -87,7 +98,7 @@ pub(super) fn addr() -> Option<MemInfo> {
                 }
             }
             trace!(
-                "argc: {element}, argv_ptr: {envp:?}, addr: {:?} -> {end_addr:?}, len: {byte_len}",
+                "envc: {element}, env_ptr: {envp:?}, addr: {:?} -> {end_addr:?}, len: {byte_len}",
                 *envp
             );
             if byte_len != 0 {

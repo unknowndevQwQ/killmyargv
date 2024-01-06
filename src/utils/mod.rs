@@ -3,10 +3,12 @@ pub(super) mod env_addr;
 
 use std::{
     env::{set_var, vars_os},
-    ffi::{c_char, CString},
+    ffi::{c_char, CString, OsStr},
+    os::unix::ffi::OsStrExt,
     ptr, slice,
 };
 
+use log::{error, trace};
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -51,7 +53,7 @@ impl KillMyArgv {
 
         match (argv_addr::addr(), env_addr::addr()) {
             (Ok(argv_mem), None) => {
-                dbg!(&argv_mem);
+                trace!("argv struct: {argv_mem:#?}");
                 #[cfg(feature = "replace_argv_element")]
                 let mut new_argvp = argv_mem
                     .copy
@@ -61,16 +63,15 @@ impl KillMyArgv {
 
                 #[cfg(feature = "replace_argv_element")]
                 for i in (0..argv_mem.element).rev() {
-                    dbg!(i);
                     if let Some(new_ptr) = new_argvp.pop() {
-                        dbg!(new_ptr);
+                        trace!("processing argc: {i}, ptr: {new_ptr:?}");
                         unsafe {
                             let ptr = argv_mem.pointer_addr as *mut *const c_char;
                             ptr.offset(i as isize).write(new_ptr);
-                            dbg!(argv_mem.pointer_addr.offset(i as isize), ptr, new_ptr);
+                            trace!("ptrs: {:?}, {:?}, {new_ptr:?}", *ptr.add(i), ptr.add(i));
                         }
                     } else {
-                        dbg!("new_argvp as none");
+                        trace!("argv ptr as empty");
                     };
                 }
 
@@ -83,7 +84,7 @@ impl KillMyArgv {
                 })
             }
             (Ok(argv_mem), Some(env_mem)) => {
-                dbg!(&argv_mem, &env_mem);
+                trace!("argv struct: {argv_mem:#?}, env struct: {env_mem:#?}");
                 #[cfg(feature = "replace_argv_element")]
                 let mut new_argvp = argv_mem
                     .copy
@@ -93,16 +94,15 @@ impl KillMyArgv {
 
                 #[cfg(feature = "replace_argv_element")]
                 for i in (0..argv_mem.element).rev() {
-                    dbg!(i);
                     if let Some(new_ptr) = new_argvp.pop() {
-                        dbg!(new_ptr);
+                        trace!("processing argc: {i}, ptr: {new_ptr:?}");
                         unsafe {
                             let ptr = argv_mem.pointer_addr as *mut *const c_char;
+                            trace!("ptrs: {:?}, {:?}, {new_ptr:?}", *ptr.add(i), ptr.add(i));
                             ptr.offset(i as isize).write(new_ptr);
-                            dbg!(*argv_mem.pointer_addr.offset(i as isize), ptr, new_ptr);
                         }
                     } else {
-                        dbg!("new_argvp as none");
+                        trace!("new_argvp as none");
                     };
                 }
 
@@ -148,11 +148,16 @@ impl KillMyArgv {
 
     /// Write a new args/cmdline.
     pub fn write(&self, char_vec: Vec<u8>) {
-        dbg!(&char_vec, &char_vec.len(), self.nonul_byte);
+        trace!(
+            "set len: {:?}, need not null byte: {:?}, String: {:?}, bytes hex: {char_vec:02x?}",
+            char_vec.len(),
+            self.nonul_byte,
+            OsStr::from_bytes(&char_vec)
+        );
         unsafe {
             if char_vec.len() < self.byte_len {
                 slice::from_raw_parts_mut(self.begin_addr, char_vec.len())
-                    .copy_from_slice(dbg!(&char_vec[..]));
+                    .copy_from_slice(&char_vec[..]);
 
                 ptr::write_bytes(
                     self.begin_addr.offset(char_vec.len() as isize),
@@ -161,7 +166,7 @@ impl KillMyArgv {
                 );
             } else {
                 slice::from_raw_parts_mut(self.begin_addr, self.byte_len)
-                    .copy_from_slice(dbg!(&char_vec[..self.byte_len]));
+                    .copy_from_slice(&char_vec[..self.byte_len]);
             }
             // It should be handled by advanced packaging or users,
             // and is difficultto dispose of properly here.
@@ -176,9 +181,9 @@ impl KillMyArgv {
                     ));
                 }
             }
-            if dbg!(ptr::read(self.end_addr)) != 0x00 {
-                // todo: error/warning
-                dbg!("BUG! Unexpected non-null value.");
+            let end = ptr::read(self.end_addr);
+            if end != 0x00 {
+                error!("BUG! Unexpected non-null value: {end:?}");
             }
         }
     }

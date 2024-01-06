@@ -127,6 +127,7 @@ mod imp {
                     trace!("std args is empty");
                 }
                 match envptr() {
+                    #[cfg(feature = "comp_argv")]
                     Some(envp) => {
                         if args_is_empty == false {
                             let std_argc = args.len();
@@ -141,7 +142,7 @@ mod imp {
                             if let Some(frist) = args.next() {
                                 let argv_frist =
                                     OsStr::from_bytes(CStr::from_ptr(*comp_argv).to_bytes());
-                                dbg!(argv_frist, &frist);
+                                trace!("comp argv[0]: {argv_frist:?}, std argv[0]: {frist:?}");
                                 if argv_frist == frist {
                                     argv = comp_argv as *mut *const c_char;
                                     argc = args.len() as isize;
@@ -153,7 +154,7 @@ mod imp {
                     None => return Err(InvalidArgvPointerError()),
                 }
             }
-            #[cfg(not(feature = "stack_walking"))]
+            #[cfg(all(not(feature = "stack_walking"), not(feature = "comp_argv")))]
             if argv.is_null() || (*argv).is_null() {
                 return Err(InvalidArgvPointerError());
             }

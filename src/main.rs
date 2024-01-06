@@ -11,9 +11,9 @@ use log::{debug, info, set_max_level, trace, LevelFilter};
 use spdlog::{default_logger, init_log_crate_proxy, log_crate_proxy, LogCrateProxy, Logger};
 
 fn main() {
+    init_log_crate_proxy().expect("users should only call `init_log_crate_proxy` function once");
     println!("Hi!");
     println!("argc: {}", args().len());
-    init_log_crate_proxy().expect("users should only call `init_log_crate_proxy` function once");
 
     set_max_level(LevelFilter::Trace);
 
@@ -63,6 +63,6 @@ fn main() {
     println!("set le argv");
     printenv();
     thread::sleep(time::Duration::from_secs(3));
-
+    trace!("log?");
     println!("The end.");
 }
