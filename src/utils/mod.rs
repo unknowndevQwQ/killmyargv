@@ -22,7 +22,7 @@ pub(crate) struct KillMyArgv {
     begin_addr: *mut u8,
     end_addr: *mut u8,
     byte_len: usize,
-    copy_argv: Vec<CString>,
+    saved_argv: Vec<CString>,
     nonul_byte: Option<usize>,
 }
 
@@ -34,7 +34,7 @@ pub(crate) struct MemInfo {
     #[allow(unused)]
     // argv[element] or environ[element]
     element: usize,
-    copy: Vec<CString>,
+    saved: Vec<CString>,
     #[allow(unused)]
     pointer_addr: *const *const c_char,
 }
@@ -56,7 +56,7 @@ impl KillMyArgv {
                 trace!("argv struct: {argv_mem:#?}");
                 #[cfg(feature = "replace_argv_element")]
                 let mut new_argvp = argv_mem
-                    .copy
+                    .saved
                     .iter()
                     .map(|s| s.as_ptr())
                     .collect::<Vec<*const c_char>>();
@@ -79,7 +79,7 @@ impl KillMyArgv {
                     begin_addr: argv_mem.begin_addr as *mut u8,
                     end_addr: argv_mem.end_addr as *mut u8,
                     byte_len: argv_mem.byte_len - 1,
-                    copy_argv: argv_mem.copy,
+                    saved_argv: argv_mem.saved,
                     nonul_byte: None,
                 })
             }
@@ -87,7 +87,7 @@ impl KillMyArgv {
                 trace!("argv struct: {argv_mem:#?}, env struct: {env_mem:#?}");
                 #[cfg(feature = "replace_argv_element")]
                 let mut new_argvp = argv_mem
-                    .copy
+                    .saved
                     .iter()
                     .map(|s| s.as_ptr())
                     .collect::<Vec<*const c_char>>();
@@ -110,7 +110,7 @@ impl KillMyArgv {
                 // I haven't decided if I want to remove it or not,
                 // since setenv makes it probably unnecessary.
                 let mut new_envp = env_mem
-                    .copy
+                    .saved
                     .iter()
                     .map(|s| s.as_ptr())
                     .collect::<Vec<*const c_char>>();
@@ -126,7 +126,7 @@ impl KillMyArgv {
                     begin_addr: argv_mem.begin_addr as *mut u8,
                     end_addr: env_mem.end_addr as *mut u8,
                     byte_len: argv_mem.byte_len + env_mem.byte_len - 1,
-                    copy_argv: argv_mem.copy,
+                    saved_argv: argv_mem.saved,
                     nonul_byte: Some(argv_mem.byte_len),
                 })
             }
@@ -137,7 +137,7 @@ impl KillMyArgv {
     /// Undo the args/cmdline changes.
     pub fn revert(&self) {
         let backup_charv: Vec<u8> = self
-            .copy_argv
+            .saved_argv
             .iter()
             .map(|s| s.as_bytes_with_nul())
             .flatten()

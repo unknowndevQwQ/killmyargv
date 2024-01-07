@@ -106,7 +106,7 @@ pub(super) fn addr() -> Option<MemInfo> {
                     end_addr,
                     byte_len,
                     element,
-                    copy,
+                    saved: copy,
                     pointer_addr: envp,
                 })
             } else {
