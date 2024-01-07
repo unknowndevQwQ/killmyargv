@@ -145,7 +145,7 @@ mod imp {
                                 trace!("comp argv[0]: {argv_frist:?}, std argv[0]: {frist:?}");
                                 if argv_frist == frist {
                                     argv = comp_argv as *mut *const c_char;
-                                    argc = args.len() as isize;
+                                    argc = std_argc as isize;
                                 }
                             }
                             //
