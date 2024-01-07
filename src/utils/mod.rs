@@ -3,7 +3,7 @@ pub(super) mod env_addr;
 
 use std::{
     env::{set_var, vars_os},
-    ffi::{c_char, CString, OsStr},
+    ffi::{c_char, CStr, CString, OsStr},
     os::unix::ffi::OsStrExt,
     ptr, slice,
 };
@@ -12,9 +12,15 @@ use log::{error, trace};
 use thiserror::Error;
 
 #[derive(Error, Debug)]
-pub enum Error {
+pub enum EnvError {
     #[error("The *argv[] points to an invalid memory address.")]
     InvalidArgvPointerError(),
+    #[error("Cannot get a string from pointer `{ptr:?}`.")]
+    FailedToGetString { ptr: *const *const c_char },
+    #[error("The pointer `{ptr:?}` points to null.")]
+    NullPointer { ptr: *const *const c_char },
+    #[error("The pointer as null.")]
+    AsNullPointer,
 }
 
 #[derive(Debug)]
@@ -39,19 +45,103 @@ pub(crate) struct MemInfo {
     pointer_addr: *const *const c_char,
 }
 
+unsafe fn from_addr(count: usize, ptr: *const *const c_char) -> Result<MemInfo, EnvError> {
+    if ptr.is_null() {
+        return Err(EnvError::AsNullPointer);
+    } else if (*ptr).is_null() {
+        return Err(EnvError::NullPointer { ptr });
+    }
+
+    let mut byte_len = 0;
+    let mut end_addr = *ptr;
+    let mut saved: Vec<CString> = Vec::with_capacity(count);
+    for i in 0..count {
+        let cstr_ptr = *ptr.add(i);
+        let cstr_len = CStr::from_ptr(cstr_ptr).to_bytes_with_nul().len();
+        saved.push(CStr::from_ptr(cstr_ptr).into());
+        if i < count {
+            // Decide elsewhere whether to exclude nul.
+            byte_len += cstr_len;
+
+            trace!("string[{i}] collect: recorded len={byte_len}, ptr={cstr_ptr:?}, string len={cstr_len}, next ptr={:?}",
+                cstr_ptr.add(cstr_len - 1)
+            );
+            if i == count - 1 {
+                // It is assumed that arg/environ must never have an element
+                // of length 0, otherwise unpredictable results would occur.
+                // Perhaps it would be better to add 1 byte manually when
+                // calculating the length.
+                // Avoid overstepping the bounds.
+                end_addr = cstr_ptr.add(cstr_len - 1);
+            }
+        }
+    }
+    trace!(
+        "collect count: {count}, string ptr: {ptr:?}, addr: {:?} -> {end_addr:?}, len: {byte_len}, vec_cap: {}",
+        *ptr, saved.capacity()
+    );
+    if byte_len != 0 {
+        Ok(MemInfo {
+            begin_addr: *ptr,
+            end_addr,
+            byte_len,
+            element: count,
+            saved,
+            pointer_addr: ptr,
+        })
+    } else {
+        Err(EnvError::FailedToGetString { ptr })
+    }
+}
+
+
+// Get environ address, ignore errors
+fn from_env() -> Option<MemInfo> {
+    match env_addr::addr() {
+        Some((count, ptr)) => {
+            unsafe{
+                match from_addr(count, ptr) {
+                    Ok(m) => Some(m),
+                    Err(e) => {
+                        trace!("{:?}", e);
+                        None
+                    }
+                }
+            }
+        }
+        None => None
+    }
+}
+
+fn from_argv() -> Result<MemInfo, EnvError> {
+    match argv_addr::addr() {
+        Ok((count, ptr)) => {
+            unsafe{
+                match from_addr(count, ptr) {
+                    Ok(m) => Ok(m),
+                    Err(e) => {
+                        trace!("{:?}", e);
+                        Err(e)
+                    }
+                }
+            }
+        }
+        Err(e) => Err(e)
+    }
+}
+
 impl KillMyArgv {
     /// Get the argv start address and end address.
-    pub unsafe fn argv_addrs() -> Result<(*mut u8, *mut u8), Error> {
-        match argv_addr::addr() {
+    pub unsafe fn argv_addrs() -> Result<(*mut u8, *mut u8), EnvError> {
+        match from_argv() {
             Ok(v) => Ok((v.begin_addr as *mut u8, v.end_addr as *mut u8)),
             Err(e) => Err(e),
         }
     }
 
-    pub fn new() -> Result<KillMyArgv, Error> {
-        //use Error::InvalidArgvPointerError;
+    pub fn new() -> Result<KillMyArgv, EnvError> {
 
-        match (argv_addr::addr(), env_addr::addr()) {
+        match (from_argv(), from_env()) {
             (Ok(argv_mem), None) => {
                 trace!("argv struct: {argv_mem:#?}");
                 #[cfg(feature = "replace_argv_element")]

@@ -1,11 +1,11 @@
-use super::{Error, MemInfo};
-use log::{trace, warn};
+use super::EnvError;
+use std::ffi::c_char;
 // init() copied from https://doc.rust-lang.org/src/std/sys/unix/args.rs.html#12-15
 // But what's the point?
 #[allow(unused)]
 /// One-time global initialization.
 /// The above statement was made by rust std, and no one here is responsible for that statement.
-pub unsafe fn init(argc: isize, argv: *const *const std::ffi::c_char) {
+pub unsafe fn init(argc: isize, argv: *const *const c_char) {
     imp::init(argc, argv)
 }
 
@@ -17,7 +17,7 @@ pub unsafe fn init(argc: isize, argv: *const *const std::ffi::c_char) {
 /// https://github.com/rust-lang/rust/issues/105999
 /// https://github.com/rust-lang/rust/pull/106001
 /// https://github.com/rust-lang/rust/commit/e97203c3f893893611818997bbeb0116ded2605f
-pub(super) fn addr() -> Result<MemInfo, Error> {
+pub(super) fn addr() -> Result<(usize, *const *const c_char), EnvError> {
     // todo: as an alternative, perform a walking stack to get the argv pointer.
     imp::addr()
 }
@@ -43,13 +43,13 @@ mod imp {
     #[cfg(all(target_os = "linux", target_env = "gnu"))]
     use std::ffi::c_int;
     use std::{
-        ffi::{c_char, CStr, CString, OsStr},
+        ffi::{c_char, CStr, OsStr},
         os::unix::ffi::OsStrExt,
         ptr,
         sync::atomic::{AtomicIsize, AtomicPtr, Ordering},
     }; // Required for linux-gnu only, to avoid warnings.
 
-    use super::{Error, Error::InvalidArgvPointerError, MemInfo};
+    use super::{EnvError, EnvError::InvalidArgvPointerError};
 
     use log::{trace, warn};
 
@@ -97,7 +97,7 @@ mod imp {
         init_wrapper
     };
 
-    pub(super) fn addr() -> Result<MemInfo, Error> {
+    pub(super) fn addr() -> Result<(usize, *const *const c_char), EnvError> {
         unsafe {
             // Load ARGC and ARGV, which hold the unmodified system-provided
             // argc/argv, so we can read the pointed-to memory without atomics
@@ -108,9 +108,8 @@ mod imp {
             // before initialization has completed, and we return an empty
             // list.
 
-            // dirty
-            let mut argv = ARGV.load(Ordering::Relaxed);
-            let mut argc = ARGC.load(Ordering::Relaxed);
+            let argv = ARGV.load(Ordering::Relaxed);
+            let argc = ARGC.load(Ordering::Relaxed);
             trace!("argc: {argc}, argv: {argv:?}");
 
             #[cfg(any(feature = "comp_argv", feature = "stack_walking"))]
@@ -144,57 +143,28 @@ mod imp {
                                     OsStr::from_bytes(CStr::from_ptr(*comp_argv).to_bytes());
                                 trace!("comp argv[0]: {argv_frist:?}, std argv[0]: {frist:?}");
                                 if argv_frist == frist {
-                                    argv = comp_argv as *mut *const c_char;
-                                    argc = std_argc as isize;
+                                    Ok((std_argc, comp_argv))
+                                } else {
+                                    Err(InvalidArgvPointerError())
                                 }
+                            } else {
+                                Err(InvalidArgvPointerError())
                             }
-                            //
+                        } else {
+                            // todo: stack walking
+                            Err(InvalidArgvPointerError())
                         }
                     }
-                    None => return Err(InvalidArgvPointerError()),
+                    None => Err(InvalidArgvPointerError()),
                 }
+            } else {
+                Ok((argc as usize, argv))
             }
             #[cfg(all(not(feature = "stack_walking"), not(feature = "comp_argv")))]
             if argv.is_null() || (*argv).is_null() {
-                return Err(InvalidArgvPointerError());
-            }
-
-            let mut byte_len = 0;
-            let mut end_addr = *argv;
-            let mut copy: Vec<CString> = Vec::with_capacity(argc as usize);
-            for i in 0..argc {
-                let val_ptr = *argv.offset(i);
-                let val_len = CStr::from_ptr(val_ptr).to_bytes_with_nul().len();
-                copy.push(CStr::from_ptr(val_ptr).into());
-                if i < argc {
-                    // Decide elsewhere whether to exclude nul.
-                    byte_len += val_len;
-                    trace!("argv collect: recorded len={byte_len}, ptr={val_ptr:?}, len={val_len}, next ptr={:?}",
-                        val_ptr.offset((val_len - 1) as isize)
-                    );
-                    if i + 1 == argc {
-                        // Perhaps it would be better to add 1 byte manually
-                        // when calculating the length.
-                        // Avoid overstepping the bounds.
-                        end_addr = val_ptr.offset((val_len - 1) as isize);
-                    }
-                }
-            }
-            trace!(
-                "argc: {argc}, argv_ptr: {argv:?}, addr: {:?} -> {end_addr:?}, len: {byte_len}",
-                *argv
-            );
-            if byte_len != 0 {
-                Ok(MemInfo {
-                    begin_addr: *argv,
-                    end_addr,
-                    byte_len,
-                    element: argc as usize,
-                    saved: copy,
-                    pointer_addr: argv,
-                })
-            } else {
                 Err(InvalidArgvPointerError())
+            } else {
+                Ok((argc as usize, argv))
             }
         }
     }
@@ -203,14 +173,14 @@ mod imp {
 // Not yet tested
 #[cfg(any(target_os = "macos", target_os = "ios", target_os = "watchos"))]
 mod imp {
-    use std::ffi::{c_char, c_int, CStr, CString};
+    use std::ffi::{c_char, c_int};
 
-    use super::{Error, Error::InvalidArgvPointerError, MemInfo};
+    use super::{EnvError, EnvError::InvalidArgvPointerError};
 
     pub unsafe fn init(_argc: isize, _argv: *const *const c_char) {}
 
     #[cfg(target_os = "macos")]
-    pub fn addr() -> Result<MemInfo, Error> {
+    pub fn addr() -> Result<MemInfo, EnvError> {
         extern "C" {
             // These functions are in crt_externs.h.
             fn _NSGetArgc() -> *mut c_int;
@@ -222,37 +192,10 @@ mod imp {
                 *_NSGetArgc() as isize,
                 *_NSGetArgv() as *const *const c_char,
             );
-            let mut byte_len = 0;
-            let mut end_addr = *argv;
-            let mut copy: Vec<CString> = Vec::with_capacity(argc as usize);
-            for i in 0..argc {
-                let val_ptr = *argv.offset(i);
-                let val_len = CStr::from_ptr(val_ptr).to_bytes_with_nul().len();
-                copy.push(CStr::from_ptr(val_ptr).into());
-                if i < argc {
-                    // Decide elsewhere whether to exclude nul.
-                    byte_len += val_len;
-                    trace!("argv collect: recorded len={byte_len}, ptr={val_ptr:?}, len={val_len}, next ptr={:?}",
-                        val_ptr.offset((val_len - 1) as isize)
-                    );
-                    if i + 1 == argc {
-                        // Perhaps it would be better to add 1 byte manually when calculating the length.
-                        // Avoid overstepping the bounds.
-                        end_addr = val_ptr.offset((val_len - 1) as isize);
-                    }
-                }
-            }
-            if end_addr != *argv {
-                Ok(MemInfo {
-                    begin_addr: *argv,
-                    end_addr,
-                    byte_len,
-                    element: argc as usize,
-                    copy,
-                    pointer_addr: argv,
-                })
+            if argv.is_null() || (*argv).is_null() {
+                Err(InvalidArgvPointerError())
             } else {
-                Error(InvalidArgvPointerError())
+                Ok((argc as usize, argv))
             }
         };
     }
@@ -273,8 +216,8 @@ mod imp {
     // TODO
     // But does anyone really need it?
     #[cfg(any(target_os = "ios", target_os = "watchos"))]
-    pub fn addr() -> Result<MemInfo, Error> {
-        Error(InvalidArgvPointerError())
+    pub fn addr() -> Result<MemInfo, EnvError> {
+        EnvError(InvalidArgvPointerError())
     }
     /*
     pub fn args() -> Args {
