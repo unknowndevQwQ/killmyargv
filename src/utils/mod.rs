@@ -1,13 +1,13 @@
 pub(super) mod argv_addr;
 pub(super) mod env_addr;
 
+#[cfg(all(feature = "clobber_environ", feature = "replace_environ_element"))]
+use std::env::{set_var, vars_os};
 use std::{
     ffi::{c_char, CStr, CString, OsStr},
     os::unix::ffi::OsStrExt,
     ptr, slice,
 };
-#[cfg(all(feature = "clobber_environ", feature = "replace_environ_element"))]
-use std::env::{set_var, vars_os};
 
 use log::{error, trace};
 use thiserror::Error;
@@ -95,39 +95,34 @@ unsafe fn from_addr(count: usize, ptr: *const *const c_char) -> Result<MemInfo, 
     }
 }
 
-
 // Get environ address, ignore errors
 fn from_env() -> Option<MemInfo> {
     match env_addr::addr() {
-        Some((count, ptr)) => {
-            unsafe{
-                match from_addr(count, ptr) {
-                    Ok(m) => Some(m),
-                    Err(e) => {
-                        trace!("{:?}", e);
-                        None
-                    }
+        Some((count, ptr)) => unsafe {
+            match from_addr(count, ptr) {
+                Ok(m) => Some(m),
+                Err(e) => {
+                    trace!("{:?}", e);
+                    None
                 }
             }
-        }
-        None => None
+        },
+        None => None,
     }
 }
 
 fn from_argv() -> Result<MemInfo, EnvError> {
     match argv_addr::addr() {
-        Ok((count, ptr)) => {
-            unsafe{
-                match from_addr(count, ptr) {
-                    Ok(m) => Ok(m),
-                    Err(e) => {
-                        trace!("{:?}", e);
-                        Err(e)
-                    }
+        Ok((count, ptr)) => unsafe {
+            match from_addr(count, ptr) {
+                Ok(m) => Ok(m),
+                Err(e) => {
+                    trace!("{:?}", e);
+                    Err(e)
                 }
             }
-        }
-        Err(e) => Err(e)
+        },
+        Err(e) => Err(e),
     }
 }
 
@@ -141,7 +136,6 @@ impl KillMyArgv {
     }
 
     pub fn new() -> Result<KillMyArgv, EnvError> {
-
         match (from_argv(), from_env()) {
             (Ok(argv_mem), None) => {
                 trace!("argv struct: {argv_mem:#?}");

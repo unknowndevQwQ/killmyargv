@@ -2,12 +2,7 @@
     not(any(feature = "clobber_environ", feature = "stack_walking")),
     allow(unused_imports)
 )]
-use std::{
-    ffi::c_char,
-    ptr,
-};
-
-
+use std::{ffi::c_char, ptr};
 
 use log::{trace, warn};
 
