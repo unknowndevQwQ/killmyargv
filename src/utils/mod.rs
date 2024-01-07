@@ -2,11 +2,12 @@ pub(super) mod argv_addr;
 pub(super) mod env_addr;
 
 use std::{
-    env::{set_var, vars_os},
     ffi::{c_char, CStr, CString, OsStr},
     os::unix::ffi::OsStrExt,
     ptr, slice,
 };
+#[cfg(all(feature = "clobber_environ", feature = "replace_environ_element"))]
+use std::env::{set_var, vars_os};
 
 use log::{error, trace};
 use thiserror::Error;
@@ -197,6 +198,7 @@ impl KillMyArgv {
                 }
 
                 #[allow(unused)]
+                #[cfg(all(feature = "clobber_environ", feature = "replace_environ_element"))]
                 // I haven't decided if I want to remove it or not,
                 // since setenv makes it probably unnecessary.
                 let mut new_envp = env_mem
@@ -207,6 +209,7 @@ impl KillMyArgv {
 
                 // Using std instead of manually replacing each element in environ
                 // is just being lazy.
+                #[cfg(all(feature = "clobber_environ", feature = "replace_environ_element"))]
                 for (key, value) in vars_os() {
                     set_var(&key, "NoNe"); // This line may not be needed.
                     set_var(key, value); // Expected: libc::setenv(key, value, 1)
