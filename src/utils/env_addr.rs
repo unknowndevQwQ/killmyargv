@@ -68,7 +68,6 @@ pub(super) fn addr() -> Option<MemInfo> {
                         *environ
                     );
                     environ = envp;
-                    element -= 1; // Eliminate the last element that points to null.
                     break;
                 }
             }
