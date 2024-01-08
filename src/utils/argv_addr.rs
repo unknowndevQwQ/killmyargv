@@ -53,7 +53,7 @@ mod imp {
 
     use super::EnvError;
 
-    use log::{trace, warn};
+    use log::{trace, error};
 
     // The system-provided argc and argv, which we store in static memory
     // here so that we can defer the work of parsing them until its actually
@@ -69,6 +69,8 @@ mod imp {
         // because they only hold the unmodified system-provide argv/argc.
         ARGC.store(argc, Ordering::Relaxed);
         ARGV.store(argv as *mut _, Ordering::Relaxed);
+
+        error!("really init... argc: \"{argc}\", argv: \"{argv:?}\"");
     }
 
     #[cfg_attr(all(target_os = "linux", target_env = "gnu"), allow(unused))]
@@ -79,6 +81,8 @@ mod imp {
         // still initialize here.
         #[cfg(any(miri, not(all(target_os = "linux", target_env = "gnu"))))]
         really_init(_argc, _argv);
+
+        error!("miri call really_init, argc: \"{_argc}\", argv: \"{_argv:?}\"");
     }
 
     /// glibc passes argc, argv, and envp to functions in .init_array, as a non-standard extension.
@@ -94,6 +98,8 @@ mod imp {
         ) {
             unsafe {
                 really_init(argc as isize, argv);
+
+                error!("glibc call really_init, argc: \"{argc}\", argv: \"{argv:?}\"");
             }
         }
         init_wrapper
