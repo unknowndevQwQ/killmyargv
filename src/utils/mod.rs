@@ -15,8 +15,10 @@ use thiserror::Error;
 #[derive(Error, Debug)]
 pub enum EnvError {
     #[error("The *argv[] points to an invalid memory address.")]
-    InvalidArgvPointerError(),
-    #[error("Cannot get a string from pointer `{ptr:?}`.")]
+    InvalidArgvPointer,
+    #[error("Failed to get *argv[] pointer.")]
+    FailedToGetArgvPointer,
+    #[error("Failed to get a string from pointer `{ptr:?}`.")]
     FailedToGetString { ptr: *const *const c_char },
     #[error("The pointer `{ptr:?}` points to null.")]
     NullPointer { ptr: *const *const c_char },

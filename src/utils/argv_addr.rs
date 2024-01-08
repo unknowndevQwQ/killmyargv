@@ -40,16 +40,18 @@ pub(super) fn addr() -> Result<(usize, *const *const c_char), EnvError> {
     target_os = "horizon"
 ))]
 mod imp {
+    // Required for linux-gnu only, to avoid warnings.
     #[cfg(all(target_os = "linux", target_env = "gnu"))]
     use std::ffi::c_int;
+
     use std::{
         ffi::{c_char, CStr, OsStr},
         os::unix::ffi::OsStrExt,
         ptr,
         sync::atomic::{AtomicIsize, AtomicPtr, Ordering},
-    }; // Required for linux-gnu only, to avoid warnings.
+    };
 
-    use super::{EnvError, EnvError::InvalidArgvPointerError};
+    use super::EnvError;
 
     use log::{trace, warn};
 
@@ -117,52 +119,48 @@ mod imp {
                 use crate::utils::env_addr::envptr;
                 use std::env::args_os;
 
+                let Some(envp) = envptr() else {
+                    return Err(EnvError::FailedToGetArgvPointer);
+                };
                 let mut args = args_os();
                 let mut args_is_empty = false;
-                //
                 trace!("args: {:#?}", &args);
                 if args.len() == 0 {
                     args_is_empty = true;
                     trace!("std args is empty");
                 }
-                match envptr() {
-                    #[cfg(feature = "comp_argv")]
-                    Some(envp) => {
-                        if args_is_empty == false {
-                            let std_argc = args.len();
-                            // *environ[] == *argv[] + argc + 1, aka
-                            // *argv[] = *environ[] - (argc + 1)
-                            let comp_argv = envp.sub(std_argc + 1);
-                            trace!("environ ptr: {envp:?}, argc from std: {std_argc:?}, computed argv: {comp_argv:?}");
-                            if comp_argv.is_null() || (*comp_argv).is_null() {
-                                return Err(InvalidArgvPointerError());
-                            }
 
-                            if let Some(frist) = args.next() {
-                                let argv_frist =
-                                    OsStr::from_bytes(CStr::from_ptr(*comp_argv).to_bytes());
-                                trace!("comp argv[0]: {argv_frist:?}, std argv[0]: {frist:?}");
-                                if argv_frist == frist {
-                                    Ok((std_argc, comp_argv))
-                                } else {
-                                    Err(InvalidArgvPointerError())
-                                }
-                            } else {
-                                Err(InvalidArgvPointerError())
-                            }
-                        } else {
-                            // todo: stack walking
-                            Err(InvalidArgvPointerError())
-                        }
-                    }
-                    None => Err(InvalidArgvPointerError()),
+                if args_is_empty {
+                    // todo: stack walking
+                    return Err(EnvError::InvalidArgvPointer);
+                }
+
+                let std_argc = args.len();
+                // *environ[] == *argv[] + argc + 1, aka
+                // *argv[] = *environ[] - (argc + 1)
+                let comp_argv = envp.sub(std_argc + 1);
+                trace!("environ ptr: {envp:?}, argc from std: {std_argc:?}, computed argv: {comp_argv:?}");
+                if comp_argv.is_null() || (*comp_argv).is_null() {
+                    return Err(EnvError::InvalidArgvPointer);
+                }
+
+                let Some(frist) = args.next() else {
+                    return Err(EnvError::InvalidArgvPointer);
+                };
+
+                let argv_frist = OsStr::from_bytes(CStr::from_ptr(*comp_argv).to_bytes());
+                trace!("comp argv[0]: {argv_frist:?}, std argv[0]: {frist:?}");
+                if argv_frist == frist {
+                    Ok((std_argc, comp_argv))
+                } else {
+                    Err(EnvError::InvalidArgvPointer)
                 }
             } else {
                 Ok((argc as usize, argv))
             }
             #[cfg(all(not(feature = "stack_walking"), not(feature = "comp_argv")))]
             if argv.is_null() || (*argv).is_null() {
-                Err(InvalidArgvPointerError())
+                Err(EnvError::InvalidArgvPointer)
             } else {
                 Ok((argc as usize, argv))
             }
@@ -175,7 +173,7 @@ mod imp {
 mod imp {
     use std::ffi::{c_char, c_int};
 
-    use super::{EnvError, EnvError::InvalidArgvPointerError};
+    use super::EnvError;
 
     pub unsafe fn init(_argc: isize, _argv: *const *const c_char) {}
 
@@ -193,7 +191,7 @@ mod imp {
                 *_NSGetArgv() as *const *const c_char,
             );
             if argv.is_null() || (*argv).is_null() {
-                Err(InvalidArgvPointerError())
+                Err(EnvError::InvalidArgvPointer)
             } else {
                 Ok((argc as usize, argv))
             }
@@ -217,7 +215,7 @@ mod imp {
     // But does anyone really need it?
     #[cfg(any(target_os = "ios", target_os = "watchos"))]
     pub fn addr() -> Result<MemInfo, EnvError> {
-        EnvError(InvalidArgvPointerError())
+        EnvError(EnvError::InvalidArgvPointer)
     }
     /*
     pub fn args() -> Args {
