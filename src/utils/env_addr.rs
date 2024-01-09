@@ -1,9 +1,6 @@
-#[cfg_attr(
-    not(any(feature = "clobber_environ", feature = "stack_walking")),
-    allow(unused_imports)
-)]
 use std::{ffi::c_char, ptr};
 
+#[cfg(feature = "clobber_environ")]
 use log::{trace, warn};
 
 // environ() copied from https://doc.rust-lang.org/src/std/sys/unix/os.rs.html#491-502
