@@ -70,7 +70,7 @@ mod imp {
         ARGC.store(argc, Ordering::Relaxed);
         ARGV.store(argv as *mut _, Ordering::Relaxed);
 
-        error!("really init... argc: \"{argc}\", argv: \"{argv:?}\"");
+        println!("really init... argc: \"{argc}\", argv: \"{argv:?}\"");
     }
 
     #[cfg_attr(all(target_os = "linux", target_env = "gnu"), allow(unused))]
@@ -82,7 +82,7 @@ mod imp {
         #[cfg(any(miri, not(all(target_os = "linux", target_env = "gnu"))))]
         really_init(_argc, _argv);
 
-        error!("miri call really_init, argc: \"{_argc}\", argv: \"{_argv:?}\"");
+        println!("miri call really_init, argc: \"{_argc}\", argv: \"{_argv:?}\"");
     }
 
     /// glibc passes argc, argv, and envp to functions in .init_array, as a non-standard extension.
@@ -99,7 +99,7 @@ mod imp {
             unsafe {
                 really_init(argc as isize, argv);
 
-                error!("glibc call really_init, argc: \"{argc}\", argv: \"{argv:?}\"");
+                println!("glibc call really_init, argc: \"{argc}\", argv: \"{argv:?}\"");
             }
         }
         init_wrapper
