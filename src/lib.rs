@@ -30,7 +30,7 @@ pub enum EnvError {
 pub struct KillMyArgv {
     begin_addr: *mut u8,
     end_addr: *mut u8,
-    byte_len: usize,
+    max_len: usize,
     saved_argv: Vec<CString>,
     nonul_byte: Option<usize>,
 }
@@ -165,7 +165,7 @@ impl KillMyArgv {
                 Ok(KillMyArgv {
                     begin_addr: argv_mem.begin_addr as *mut u8,
                     end_addr: argv_mem.end_addr as *mut u8,
-                    byte_len: argv_mem.byte_len - 1,
+                    max_len: argv_mem.byte_len - 1,
                     saved_argv: argv_mem.saved,
                     nonul_byte: None,
                 })
@@ -214,7 +214,7 @@ impl KillMyArgv {
                 Ok(KillMyArgv {
                     begin_addr: argv_mem.begin_addr as *mut u8,
                     end_addr: env_mem.end_addr as *mut u8,
-                    byte_len: argv_mem.byte_len + env_mem.byte_len - 1,
+                    max_len: argv_mem.byte_len + env_mem.byte_len - 1,
                     saved_argv: argv_mem.saved,
                     nonul_byte: Some(argv_mem.byte_len),
                 })
@@ -232,11 +232,11 @@ impl KillMyArgv {
             .flatten()
             .cloned()
             .collect();
-        Self::write(&self, &backup_chars)
+        Self::set(&self, &backup_chars)
     }
 
-    /// Write a new args/cmdline.
-    pub fn write(&self, chars: &[u8]) {
+    /// set a new args/cmdline.
+    pub fn set(&self, chars: &[u8]) {
         trace!(
             "set len: {:?}, need not null byte: {:?}, String: {:?}, bytes hex: {chars:02x?}",
             chars.len(),
@@ -244,17 +244,17 @@ impl KillMyArgv {
             OsStr::from_bytes(&chars)
         );
         unsafe {
-            if chars.len() < self.byte_len {
+            if chars.len() < self.max_len {
                 slice::from_raw_parts_mut(self.begin_addr, chars.len()).copy_from_slice(&chars[..]);
 
                 ptr::write_bytes(
                     self.begin_addr.add(chars.len()),
                     0x00,
-                    self.byte_len - chars.len(),
+                    self.max_len - chars.len(),
                 );
             } else {
-                slice::from_raw_parts_mut(self.begin_addr, self.byte_len)
-                    .copy_from_slice(&chars[..self.byte_len]);
+                slice::from_raw_parts_mut(self.begin_addr, self.max_len)
+                    .copy_from_slice(&chars[..self.max_len]);
             }
             // It should be handled by advanced packaging or users,
             // and is difficultto dispose of properly here.
