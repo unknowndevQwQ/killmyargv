@@ -30,11 +30,7 @@ fn main() {
             println!("std env_os k&v: {k:?}={v:?}");
         }
     }
-    mem.write(
-        "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee????\n"
-            .as_bytes()
-            .to_vec(),
-    );
+    mem.write("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee????\n".as_bytes());
     println!("set gr argv");
     printenv();
     thread::sleep(time::Duration::from_secs(3));
@@ -46,7 +42,7 @@ fn main() {
         }
     }
 
-    mem.write("char_vec!".as_bytes().to_vec());
+    mem.write("char_vec!".as_bytes());
     set_var("key", "value");
     println!("set le argv and env");
     printenv();
@@ -57,7 +53,7 @@ fn main() {
     printenv();
     thread::sleep(time::Duration::from_secs(3));
 
-    mem.write(b"aaaaaaaaaaaaaaaaaaaa\0bbbbb12\088".to_vec());
+    mem.write(b"aaaaaaaaaaaaaaaaaaaa\0bbbbb12\088");
     println!("set le argv");
     printenv();
     thread::sleep(time::Duration::from_secs(3));

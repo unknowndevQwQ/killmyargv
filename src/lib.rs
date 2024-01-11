@@ -225,42 +225,41 @@ impl KillMyArgv {
 
     /// Undo the args/cmdline changes.
     pub fn revert(&self) {
-        let backup_charv: Vec<u8> = self
+        let backup_chars: Vec<u8> = self
             .saved_argv
             .iter()
             .map(|s| s.as_bytes_with_nul())
             .flatten()
             .cloned()
             .collect();
-        Self::write(&self, backup_charv.clone())
+        Self::write(&self, &backup_chars)
     }
 
     /// Write a new args/cmdline.
-    pub fn write(&self, char_vec: Vec<u8>) {
+    pub fn write(&self, chars: &[u8]) {
         trace!(
-            "set len: {:?}, need not null byte: {:?}, String: {:?}, bytes hex: {char_vec:02x?}",
-            char_vec.len(),
+            "set len: {:?}, need not null byte: {:?}, String: {:?}, bytes hex: {chars:02x?}",
+            chars.len(),
             self.nonul_byte,
-            OsStr::from_bytes(&char_vec)
+            OsStr::from_bytes(&chars)
         );
         unsafe {
-            if char_vec.len() < self.byte_len {
-                slice::from_raw_parts_mut(self.begin_addr, char_vec.len())
-                    .copy_from_slice(&char_vec[..]);
+            if chars.len() < self.byte_len {
+                slice::from_raw_parts_mut(self.begin_addr, chars.len()).copy_from_slice(&chars[..]);
 
                 ptr::write_bytes(
-                    self.begin_addr.offset(char_vec.len() as isize),
+                    self.begin_addr.offset(chars.len() as isize),
                     0x00,
-                    self.byte_len - char_vec.len(),
+                    self.byte_len - chars.len(),
                 );
             } else {
                 slice::from_raw_parts_mut(self.begin_addr, self.byte_len)
-                    .copy_from_slice(&char_vec[..self.byte_len]);
+                    .copy_from_slice(&chars[..self.byte_len]);
             }
             // It should be handled by advanced packaging or users,
             // and is difficultto dispose of properly here.
             if let Some(nonul_byte) = self.nonul_byte {
-                if char_vec.len() > nonul_byte
+                if chars.len() > nonul_byte
                     && dbg!(ptr::read(self.begin_addr.offset(nonul_byte as isize - 1))) == 0x00
                 {
                     dbg!(ptr::write_bytes(
