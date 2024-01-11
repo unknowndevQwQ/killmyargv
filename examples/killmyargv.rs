@@ -1,7 +1,4 @@
-// lisence: expat/mit
-mod utils;
-
-use crate::utils::KillMyArgv;
+use killmyargv::KillMyArgv;
 
 use std::env::{args, args_os, set_var, vars_os};
 use std::sync::Arc;

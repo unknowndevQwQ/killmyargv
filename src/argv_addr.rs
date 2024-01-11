@@ -54,7 +54,7 @@ mod imp {
 
     use super::EnvError;
 
-    use log::{trace, warn};
+    use log::trace;
 
     // The system-provided argc and argv, which we store in static memory
     // here so that we can defer the work of parsing them until its actually
@@ -139,7 +139,7 @@ mod imp {
                 feature = "forge_walking"
             ))]
             if argv.is_null() || (*argv).is_null() {
-                use crate::utils::env_addr::envptr;
+                use crate::env_addr::envptr;
 
                 #[cfg(not(feature = "force_walking"))]
                 use std::env::args_os;

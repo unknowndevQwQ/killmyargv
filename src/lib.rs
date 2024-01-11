@@ -1,5 +1,5 @@
-pub(super) mod argv_addr;
-pub(super) mod env_addr;
+mod argv_addr;
+mod env_addr;
 
 #[cfg(all(feature = "clobber_environ", feature = "replace_environ_element"))]
 use std::env::{set_var, vars_os};
@@ -27,7 +27,7 @@ pub enum EnvError {
 }
 
 #[derive(Debug)]
-pub(crate) struct KillMyArgv {
+pub struct KillMyArgv {
     begin_addr: *mut u8,
     end_addr: *mut u8,
     byte_len: usize,
@@ -36,7 +36,7 @@ pub(crate) struct KillMyArgv {
 }
 
 #[derive(Debug)]
-pub(crate) struct MemInfo {
+struct MemInfo {
     begin_addr: *const c_char,
     end_addr: *const c_char,
     byte_len: usize,
