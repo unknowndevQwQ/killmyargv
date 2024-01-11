@@ -154,7 +154,7 @@ impl KillMyArgv {
                         trace!("processing argc: {i}, ptr: {new_ptr:?}");
                         unsafe {
                             let ptr = argv_mem.pointer_addr as *mut *const c_char;
-                            ptr.offset(i as isize).write(new_ptr);
+                            ptr.add(i).write(new_ptr);
                             trace!("ptrs: {:?}, {:?}, {new_ptr:?}", *ptr.add(i), ptr.add(i));
                         }
                     } else {
@@ -186,7 +186,7 @@ impl KillMyArgv {
                         unsafe {
                             let ptr = argv_mem.pointer_addr as *mut *const c_char;
                             trace!("ptrs: {:?}, {:?}, {new_ptr:?}", *ptr.add(i), ptr.add(i));
-                            ptr.offset(i as isize).write(new_ptr);
+                            ptr.add(i).write(new_ptr);
                         }
                     } else {
                         trace!("new_argvp as none");
@@ -248,7 +248,7 @@ impl KillMyArgv {
                 slice::from_raw_parts_mut(self.begin_addr, chars.len()).copy_from_slice(&chars[..]);
 
                 ptr::write_bytes(
-                    self.begin_addr.offset(chars.len() as isize),
+                    self.begin_addr.add(chars.len()),
                     0x00,
                     self.byte_len - chars.len(),
                 );
@@ -260,10 +260,10 @@ impl KillMyArgv {
             // and is difficultto dispose of properly here.
             if let Some(nonul_byte) = self.nonul_byte {
                 if chars.len() > nonul_byte
-                    && dbg!(ptr::read(self.begin_addr.offset(nonul_byte as isize - 1))) == 0x00
+                    && dbg!(ptr::read(self.begin_addr.add(nonul_byte - 1))) == 0x00
                 {
                     dbg!(ptr::write_bytes(
-                        self.begin_addr.offset(nonul_byte as isize - 1),
+                        self.begin_addr.add(nonul_byte - 1),
                         0x01,
                         1
                     ));
