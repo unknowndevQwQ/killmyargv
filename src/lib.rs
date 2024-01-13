@@ -21,9 +21,9 @@ pub enum EnvError {
     #[error("Failed to get a string from pointer `{ptr:?}`.")]
     FailedToGetString { ptr: *const *const c_char },
     #[error("The pointer `{ptr:?}` points to null.")]
-    NullPointer { ptr: *const *const c_char },
+    PonitToNull { ptr: *const *const c_char },
     #[error("The pointer as null.")]
-    AsNullPointer,
+    NullPointer,
 }
 
 #[derive(Debug)]
@@ -50,9 +50,9 @@ struct MemInfo {
 
 unsafe fn from_addr(count: usize, ptr: *const *const c_char) -> Result<MemInfo, EnvError> {
     if ptr.is_null() {
-        return Err(EnvError::AsNullPointer);
+        return Err(EnvError::NullPointer);
     } else if (*ptr).is_null() {
-        return Err(EnvError::NullPointer { ptr });
+        return Err(EnvError::PonitToNull { ptr });
     }
 
     let mut byte_len = 0;
