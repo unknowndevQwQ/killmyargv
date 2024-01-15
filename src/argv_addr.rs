@@ -9,7 +9,6 @@ pub unsafe fn init(argc: isize, argv: *const *const c_char) {
     imp::init(argc, argv)
 }
 
-///
 /// stack walking:
 /// https://github.com/rust-lang/rust/pull/66547#issuecomment-556013952
 /// and https://github.com/leo60228/libargs
@@ -18,7 +17,6 @@ pub unsafe fn init(argc: isize, argv: *const *const c_char) {
 /// https://github.com/rust-lang/rust/pull/106001
 /// https://github.com/rust-lang/rust/commit/e97203c3f893893611818997bbeb0116ded2605f
 pub(super) fn addr() -> Result<(usize, *const *const c_char), EnvError> {
-    // todo: as an alternative, perform a walking stack to get the argv pointer.
     imp::addr()
 }
 
