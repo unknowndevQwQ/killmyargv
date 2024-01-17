@@ -220,7 +220,7 @@ impl KillMyArgv {
             .flat_map(|s| s.as_bytes_with_nul())
             .cloned()
             .collect();
-        Self::set(&self, &backup_chars)
+        Self::set(self, &backup_chars)
     }
 
     /// set a new args/cmdline.
@@ -229,11 +229,11 @@ impl KillMyArgv {
             "set len: {:?}, need not null byte: {:?}, String: {:?}, bytes hex: {chars:02x?}",
             chars.len(),
             self.nonul_byte,
-            OsStr::from_bytes(&chars)
+            OsStr::from_bytes(chars)
         );
         unsafe {
             if chars.len() < self.max_len {
-                slice::from_raw_parts_mut(self.begin_addr, chars.len()).copy_from_slice(&chars[..]);
+                slice::from_raw_parts_mut(self.begin_addr, chars.len()).copy_from_slice(chars);
 
                 ptr::write_bytes(
                     self.begin_addr.add(chars.len()),
