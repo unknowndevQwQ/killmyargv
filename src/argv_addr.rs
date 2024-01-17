@@ -142,9 +142,7 @@ mod imp {
                 #[cfg(not(feature = "force_walking"))]
                 use std::env::args_os;
 
-                let Some(envp) = envptr() else {
-                    return Err(EnvError::FailedToGetArgvPointer);
-                };
+                let envp = envptr().ok_or(EnvError::FailedToGetArgvPointer)?;
 
                 #[cfg(feature = "force_walking")]
                 return Ok(from_stack_walking(envp));
@@ -176,10 +174,7 @@ mod imp {
                         return Err(EnvError::InvalidArgvPointer);
                     }
 
-                    let Some(frist) = args.next() else {
-                        return Err(EnvError::InvalidArgvPointer);
-                    };
-
+                    let frist = args.next().ok_or(EnvError::InvalidArgvPointer)?;
                     let argv_frist = OsStr::from_bytes(CStr::from_ptr(*comp_argv).to_bytes());
                     trace!("comp argv[0]: {argv_frist:?}, std argv[0]: {frist:?}");
                     if argv_frist == frist {

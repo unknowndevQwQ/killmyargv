@@ -99,42 +99,31 @@ unsafe fn from_addr(count: usize, ptr: *const *const c_char) -> Result<MemInfo, 
 
 // Get environ address, ignore errors
 fn from_env() -> Option<MemInfo> {
-    match env_addr::addr() {
-        Some((count, ptr)) => unsafe {
-            match from_addr(count, ptr) {
-                Ok(m) => Some(m),
-                Err(e) => {
-                    trace!("{:?}", e);
-                    None
-                }
-            }
-        },
-        None => None,
+    let (count, ptr) = env_addr::addr()?;
+    match unsafe { from_addr(count, ptr) } {
+        Ok(m) => Some(m),
+        Err(e) => {
+            trace!("{:?}", e);
+            None
+        }
     }
 }
 
 fn from_argv() -> Result<MemInfo, EnvError> {
-    match argv_addr::addr() {
-        Ok((count, ptr)) => unsafe {
-            match from_addr(count, ptr) {
-                Ok(m) => Ok(m),
-                Err(e) => {
-                    trace!("{:?}", e);
-                    Err(e)
-                }
-            }
-        },
-        Err(e) => Err(e),
+    let (count, ptr) = argv_addr::addr()?;
+    match unsafe { from_addr(count, ptr) } {
+        Ok(m) => Ok(m),
+        Err(e) => {
+            trace!("{:?}", e);
+            Err(e)
+        }
     }
 }
 
 impl KillMyArgv {
     /// Get the argv start address and end address.
     pub unsafe fn argv_addrs() -> Result<(*mut u8, *mut u8), EnvError> {
-        match from_argv() {
-            Ok(v) => Ok((v.begin_addr as *mut u8, v.end_addr as *mut u8)),
-            Err(e) => Err(e),
-        }
+        from_argv().map(|m| (m.begin_addr as *mut u8, m.end_addr as *mut u8))
     }
 
     pub fn new() -> Result<KillMyArgv, EnvError> {
@@ -159,7 +148,7 @@ impl KillMyArgv {
                         }
                     } else {
                         trace!("argv ptr as empty");
-                    };
+                    }
                 }
 
                 Ok(KillMyArgv {
@@ -190,7 +179,7 @@ impl KillMyArgv {
                         }
                     } else {
                         trace!("new_argvp as none");
-                    };
+                    }
                 }
 
                 #[allow(unused)]
@@ -228,8 +217,7 @@ impl KillMyArgv {
         let backup_chars: Vec<u8> = self
             .saved_argv
             .iter()
-            .map(|s| s.as_bytes_with_nul())
-            .flatten()
+            .flat_map(|s| s.as_bytes_with_nul())
             .cloned()
             .collect();
         Self::set(&self, &backup_chars)
