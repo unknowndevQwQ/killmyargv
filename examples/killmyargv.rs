@@ -35,11 +35,9 @@ fn main() {
     printenv();
     thread::sleep(time::Duration::from_secs(3));
 
-    unsafe {
-        if let Ok(v) = KillMyArgv::argv_addrs() {
-            let (b, e) = v;
-            println!("{b:?} {e:?}");
-        }
+    if let Ok(v) = KillMyArgv::argv_addrs() {
+        let (b, e) = v;
+        println!("{b:?} {e:?}");
     }
 
     mem.set("char_vec!".as_bytes());

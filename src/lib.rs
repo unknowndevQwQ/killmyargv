@@ -122,7 +122,7 @@ fn from_argv() -> Result<MemInfo, EnvError> {
 
 impl KillMyArgv {
     /// Get the argv start address and end address.
-    pub unsafe fn argv_addrs() -> Result<(*mut u8, *mut u8), EnvError> {
+    pub fn argv_addrs() -> Result<(*mut u8, *mut u8), EnvError> {
         from_argv().map(|m| (m.begin_addr as *mut u8, m.end_addr as *mut u8))
     }
 
