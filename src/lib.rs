@@ -9,7 +9,7 @@ use std::{
     ptr, slice,
 };
 
-use log::{error, trace};
+use log::{error, trace, warn};
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -60,17 +60,24 @@ unsafe fn from_addr(count: usize, ptr: *const *const c_char) -> Result<MemInfo, 
     let mut saved: Vec<CString> = Vec::with_capacity(count);
     for i in 0..count {
         let cstr_ptr = *ptr.add(i);
+        trace!(
+            "string[{i}] ptr info: current ptr={:?}, point to={cstr_ptr:?}",
+            ptr.add(i)
+        );
+        if cstr_ptr.is_null() {
+            warn!("the string[{i}] is null, pls check");
+            break;
+        }
         let cstr_len = CStr::from_ptr(cstr_ptr).to_bytes_with_nul().len();
         saved.push(CStr::from_ptr(cstr_ptr).into());
         // Decide elsewhere whether to exclude nul.
         byte_len += cstr_len;
 
-        trace!("string[{i}] collect: recorded len={byte_len}, ptr={cstr_ptr:?}, string len={cstr_len}, next ptr={:?}",
+        trace!(
+            "string[{i}] collect: recorded len={byte_len}, start addr={cstr_ptr:?}, len={cstr_len}, end addr (with null)={:?}",
             cstr_ptr.add(cstr_len - 1)
         );
         if i == count - 1 {
-            // It is assumed that arg/environ must never have an element
-            // of length 0, otherwise unpredictable results would occur.
             // Perhaps it would be better to add 1 byte manually when
             // calculating the length.
             // Avoid overstepping the bounds.
