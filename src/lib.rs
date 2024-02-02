@@ -62,21 +62,19 @@ unsafe fn from_addr(count: usize, ptr: *const *const c_char) -> Result<MemInfo, 
         let cstr_ptr = *ptr.add(i);
         let cstr_len = CStr::from_ptr(cstr_ptr).to_bytes_with_nul().len();
         saved.push(CStr::from_ptr(cstr_ptr).into());
-        if i < count {
-            // Decide elsewhere whether to exclude nul.
-            byte_len += cstr_len;
+        // Decide elsewhere whether to exclude nul.
+        byte_len += cstr_len;
 
-            trace!("string[{i}] collect: recorded len={byte_len}, ptr={cstr_ptr:?}, string len={cstr_len}, next ptr={:?}",
-                cstr_ptr.add(cstr_len - 1)
-            );
-            if i == count - 1 {
-                // It is assumed that arg/environ must never have an element
-                // of length 0, otherwise unpredictable results would occur.
-                // Perhaps it would be better to add 1 byte manually when
-                // calculating the length.
-                // Avoid overstepping the bounds.
-                end_addr = cstr_ptr.add(cstr_len - 1);
-            }
+        trace!("string[{i}] collect: recorded len={byte_len}, ptr={cstr_ptr:?}, string len={cstr_len}, next ptr={:?}",
+            cstr_ptr.add(cstr_len - 1)
+        );
+        if i == count - 1 {
+            // It is assumed that arg/environ must never have an element
+            // of length 0, otherwise unpredictable results would occur.
+            // Perhaps it would be better to add 1 byte manually when
+            // calculating the length.
+            // Avoid overstepping the bounds.
+            end_addr = cstr_ptr.add(cstr_len - 1);
         }
     }
     trace!(
