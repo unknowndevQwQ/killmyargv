@@ -58,18 +58,24 @@ unsafe fn from_addr(count: usize, ptr: *const *const c_char) -> Result<MemInfo, 
     let mut byte_len = 0;
     let mut end_addr = *ptr;
     let mut saved: Vec<CString> = Vec::with_capacity(count);
-    for i in 0..count {
-        let cstr_ptr = *ptr.add(i);
+    let cstr_ptrs = slice::from_raw_parts(ptr, count);
+    let cstr_ptrs_len = cstr_ptrs.len();
+    if cstr_ptrs_len != count {
+        warn!(
+            "The actual length of the array ({cstr_ptrs_len}) does not match the argument ({count})."
+        );
+    }
+    for (i, cstr_ptr) in cstr_ptrs.into_iter().enumerate() {
         trace!(
             "string[{i}] ptr info: current ptr={:?}, point to={cstr_ptr:?}",
-            ptr.add(i)
+            cstr_ptr as *const _
         );
         if cstr_ptr.is_null() {
             warn!("the string[{i}] is null, pls check");
             break;
         }
-        let cstr_len = CStr::from_ptr(cstr_ptr).to_bytes_with_nul().len();
-        saved.push(CStr::from_ptr(cstr_ptr).into());
+        let cstr_len = CStr::from_ptr(*cstr_ptr).to_bytes_with_nul().len();
+        saved.push(CStr::from_ptr(*cstr_ptr).into());
         // Decide elsewhere whether to exclude nul.
         byte_len += cstr_len;
 
