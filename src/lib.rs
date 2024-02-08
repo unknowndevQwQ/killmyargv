@@ -141,6 +141,8 @@ impl KillMyArgv {
             #[cfg(feature = "replace_argv_element")]
             let mut new_argvp = argv_mem
                 .saved
+                .clone()
+                .leak()
                 .iter()
                 .map(|s| s.as_ptr())
                 .collect::<Vec<*const c_char>>();
@@ -165,6 +167,7 @@ impl KillMyArgv {
             // since setenv makes it probably unnecessary.
             let mut new_envp = env_mem
                 .saved
+                .leak()
                 .iter()
                 .map(|s| s.as_ptr())
                 .collect::<Vec<*const c_char>>();
@@ -189,6 +192,8 @@ impl KillMyArgv {
             #[cfg(feature = "replace_argv_element")]
             let mut new_argvp = argv_mem
                 .saved
+                .clone()
+                .leak()
                 .iter()
                 .map(|s| s.as_ptr())
                 .collect::<Vec<*const c_char>>();
