@@ -2,7 +2,7 @@ mod argv_addr;
 mod env_addr;
 
 #[cfg(all(feature = "clobber_environ", feature = "replace_environ_element"))]
-use std::env::{set_var, vars_os};
+use std::env::{remove_var, set_var, vars_os};
 use std::{
     ffi::{c_char, CStr, CString, OsStr},
     os::unix::ffi::OsStrExt,
@@ -173,7 +173,7 @@ impl KillMyArgv {
             // is just being lazy.
             #[cfg(all(feature = "clobber_environ", feature = "replace_environ_element"))]
             for (key, value) in vars_os() {
-                set_var(&key, "NoNe"); // This line may not be needed.
+                remove_var(&key);
                 set_var(key, value); // Expected: libc::setenv(key, value, 1)
             }
 
