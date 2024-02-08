@@ -111,24 +111,20 @@ unsafe fn from_addr(count: usize, ptr: *const *const c_char) -> Result<MemInfo, 
 // Get environ address, ignore errors
 fn from_env() -> Option<MemInfo> {
     let (count, ptr) = env_addr::addr()?;
-    match unsafe { from_addr(count, ptr) } {
-        Ok(m) => Some(m),
-        Err(e) => {
-            trace!("{:?}", e);
-            None
-        }
-    }
+    unsafe { from_addr(count, ptr) }
+        .map_err(|e| {
+            trace!("{e:?}");
+            e
+        })
+        .ok()
 }
 
 fn from_argv() -> Result<MemInfo, EnvError> {
     let (count, ptr) = argv_addr::addr()?;
-    match unsafe { from_addr(count, ptr) } {
-        Ok(m) => Ok(m),
-        Err(e) => {
-            trace!("{:?}", e);
-            Err(e)
-        }
-    }
+    unsafe { from_addr(count, ptr) }.map_err(|e| {
+        trace!("{e:?}");
+        e
+    })
 }
 
 impl KillMyArgv {
