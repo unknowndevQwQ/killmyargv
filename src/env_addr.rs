@@ -40,7 +40,8 @@ pub(super) fn addr() -> Option<(usize, *const *const c_char)> {
     unsafe {
         let envp = *environ();
         let mut environ = envp;
-        trace!("environ ptr: {environ:?} {:?}", *environ); // I often forget: Where did the number of elements go?
+        // I often forget: Where did the number of elements go?
+        trace!("environ ptr: {environ:?} {:?}", *environ);
         if !environ.is_null() && !(*environ).is_null() {
             let mut element = 0;
             trace!(
