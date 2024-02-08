@@ -138,88 +138,86 @@ impl KillMyArgv {
     }
 
     pub fn new() -> Result<KillMyArgv, EnvError> {
-        match (from_argv(), from_env()) {
-            (Ok(argv_mem), None) => {
-                trace!("argv struct: {argv_mem:#?}");
-                #[cfg(feature = "replace_argv_element")]
-                let mut new_argvp = argv_mem
-                    .saved
-                    .iter()
-                    .map(|s| s.as_ptr())
-                    .collect::<Vec<*const c_char>>();
+        let argv_mem = from_argv()?;
 
-                #[cfg(feature = "replace_argv_element")]
-                for i in (0..argv_mem.element).rev() {
-                    if let Some(new_ptr) = new_argvp.pop() {
-                        trace!("processing argc: {i}, ptr: {new_ptr:?}");
-                        unsafe {
-                            let ptr = argv_mem.pointer_addr as *mut *const c_char;
-                            ptr.add(i).write(new_ptr);
-                            trace!("ptrs: {:?}, {:?}, {new_ptr:?}", *ptr.add(i), ptr.add(i));
-                        }
-                    } else {
-                        trace!("argv ptr as empty");
+        if let Some(env_mem) = from_env() {
+            trace!("argv struct: {argv_mem:#?}, env struct: {env_mem:#?}");
+            #[cfg(feature = "replace_argv_element")]
+            let mut new_argvp = argv_mem
+                .saved
+                .iter()
+                .map(|s| s.as_ptr())
+                .collect::<Vec<*const c_char>>();
+
+            #[cfg(feature = "replace_argv_element")]
+            for i in (0..argv_mem.element).rev() {
+                if let Some(new_ptr) = new_argvp.pop() {
+                    trace!("processing argc: {i}, ptr: {new_ptr:?}");
+                    unsafe {
+                        let ptr = argv_mem.pointer_addr as *mut *const c_char;
+                        trace!("ptrs: {:?}, {:?}, {new_ptr:?}", *ptr.add(i), ptr.add(i));
+                        ptr.add(i).write(new_ptr);
                     }
+                } else {
+                    trace!("new_argvp as none");
                 }
-
-                Ok(KillMyArgv {
-                    begin_addr: argv_mem.begin_addr as *mut u8,
-                    end_addr: argv_mem.end_addr as *mut u8,
-                    max_len: argv_mem.byte_len - 1,
-                    saved_argv: argv_mem.saved,
-                    nonul_byte: None,
-                })
             }
-            (Ok(argv_mem), Some(env_mem)) => {
-                trace!("argv struct: {argv_mem:#?}, env struct: {env_mem:#?}");
-                #[cfg(feature = "replace_argv_element")]
-                let mut new_argvp = argv_mem
-                    .saved
-                    .iter()
-                    .map(|s| s.as_ptr())
-                    .collect::<Vec<*const c_char>>();
 
-                #[cfg(feature = "replace_argv_element")]
-                for i in (0..argv_mem.element).rev() {
-                    if let Some(new_ptr) = new_argvp.pop() {
-                        trace!("processing argc: {i}, ptr: {new_ptr:?}");
-                        unsafe {
-                            let ptr = argv_mem.pointer_addr as *mut *const c_char;
-                            trace!("ptrs: {:?}, {:?}, {new_ptr:?}", *ptr.add(i), ptr.add(i));
-                            ptr.add(i).write(new_ptr);
-                        }
-                    } else {
-                        trace!("new_argvp as none");
+            #[allow(unused)]
+            #[cfg(all(feature = "clobber_environ", feature = "replace_environ_element"))]
+            // I haven't decided if I want to remove it or not,
+            // since setenv makes it probably unnecessary.
+            let mut new_envp = env_mem
+                .saved
+                .iter()
+                .map(|s| s.as_ptr())
+                .collect::<Vec<*const c_char>>();
+
+            // Using std instead of manually replacing each element in environ
+            // is just being lazy.
+            #[cfg(all(feature = "clobber_environ", feature = "replace_environ_element"))]
+            for (key, value) in vars_os() {
+                set_var(&key, "NoNe"); // This line may not be needed.
+                set_var(key, value); // Expected: libc::setenv(key, value, 1)
+            }
+
+            Ok(KillMyArgv {
+                begin_addr: argv_mem.begin_addr as *mut u8,
+                end_addr: env_mem.end_addr as *mut u8,
+                max_len: argv_mem.byte_len + env_mem.byte_len - 1,
+                saved_argv: argv_mem.saved,
+                nonul_byte: Some(argv_mem.byte_len),
+            })
+        } else {
+            trace!("argv struct: {argv_mem:#?}");
+            #[cfg(feature = "replace_argv_element")]
+            let mut new_argvp = argv_mem
+                .saved
+                .iter()
+                .map(|s| s.as_ptr())
+                .collect::<Vec<*const c_char>>();
+
+            #[cfg(feature = "replace_argv_element")]
+            for i in (0..argv_mem.element).rev() {
+                if let Some(new_ptr) = new_argvp.pop() {
+                    trace!("processing argc: {i}, ptr: {new_ptr:?}");
+                    unsafe {
+                        let ptr = argv_mem.pointer_addr as *mut *const c_char;
+                        ptr.add(i).write(new_ptr);
+                        trace!("ptrs: {:?}, {:?}, {new_ptr:?}", *ptr.add(i), ptr.add(i));
                     }
+                } else {
+                    trace!("argv ptr as empty");
                 }
-
-                #[allow(unused)]
-                #[cfg(all(feature = "clobber_environ", feature = "replace_environ_element"))]
-                // I haven't decided if I want to remove it or not,
-                // since setenv makes it probably unnecessary.
-                let mut new_envp = env_mem
-                    .saved
-                    .iter()
-                    .map(|s| s.as_ptr())
-                    .collect::<Vec<*const c_char>>();
-
-                // Using std instead of manually replacing each element in environ
-                // is just being lazy.
-                #[cfg(all(feature = "clobber_environ", feature = "replace_environ_element"))]
-                for (key, value) in vars_os() {
-                    set_var(&key, "NoNe"); // This line may not be needed.
-                    set_var(key, value); // Expected: libc::setenv(key, value, 1)
-                }
-
-                Ok(KillMyArgv {
-                    begin_addr: argv_mem.begin_addr as *mut u8,
-                    end_addr: env_mem.end_addr as *mut u8,
-                    max_len: argv_mem.byte_len + env_mem.byte_len - 1,
-                    saved_argv: argv_mem.saved,
-                    nonul_byte: Some(argv_mem.byte_len),
-                })
             }
-            (Err(e), _) => Err(e),
+
+            Ok(KillMyArgv {
+                begin_addr: argv_mem.begin_addr as *mut u8,
+                end_addr: argv_mem.end_addr as *mut u8,
+                max_len: argv_mem.byte_len - 1,
+                saved_argv: argv_mem.saved,
+                nonul_byte: None,
+            })
         }
     }
 
