@@ -11,9 +11,6 @@ thiserror = "1.0.40"
 
 [dev-dependencies]
 sysinfo = { version = "0.30.5", default-features = false }
-test-binary = "3.0.2"
-base64 = "0.21.7"
-linereader = "0.4.0"
 
 [features]
 default = ["clobber_environ", "comp_argv", "stack_walking", "replace_argv_element", "replace_environ_element"]
