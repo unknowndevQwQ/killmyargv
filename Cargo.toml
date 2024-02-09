@@ -6,11 +6,11 @@ edition = "2021"
 [dependencies]
 libc = "0.2.141"
 log = "0.4.17"
-spdlog-rs = {features = ["log"], version = "0.3.12"}
 thiserror = "1.0.40"
 
 [dev-dependencies]
 sysinfo = { version = "0.30.5", default-features = false }
+spdlog-rs = {features = ["log"], version = "0.3.12"}
 
 [features]
 default = ["clobber_environ", "comp_argv", "stack_walking", "replace_argv_element", "replace_environ_element"]
