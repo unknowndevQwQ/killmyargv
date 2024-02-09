@@ -40,6 +40,7 @@ fn main() {
         println!("{b:?} {e:?}");
     }
 
+    println!("cmdline max len: {}", mem.max_len());
     mem.set("char_vec!".as_bytes());
     set_var("key", "value");
     println!("set le argv and env");

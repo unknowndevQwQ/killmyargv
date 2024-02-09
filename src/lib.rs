@@ -222,6 +222,11 @@ impl KillMyArgv {
         }
     }
 
+    /// Gets the maximum byte length for which the cmdline can be set.
+    pub fn max_len(&self) -> usize {
+        self.max_len
+    }
+
     /// Undo the args/cmdline changes.
     pub fn revert(&self) {
         let backup_chars: Vec<u8> = self
