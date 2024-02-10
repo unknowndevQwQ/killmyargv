@@ -18,6 +18,12 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     let kill_my_argv = KillMyArgv::new()?;
 
+    if let Some(output_argv_max_len) = std::env::args().nth(1) {
+        if "true" == &output_argv_max_len {
+            println!("{}", kill_my_argv.max_len())
+        }
+    }
+
     for next_cmd_line in stdin.lines() {
         let cmd_line = next_cmd_line?;
         let cmd_line = engine.decode(&cmd_line)?;

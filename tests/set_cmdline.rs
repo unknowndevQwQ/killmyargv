@@ -1,5 +1,4 @@
-use killmyargv::KillMyArgv;
-use utils::set_cmdline;
+use utils::{get_set_cmdline_path, set_cmdline, set_cmdline_with_child};
 
 #[test]
 fn test_set_cmdline_once() -> Result<()> {
@@ -21,14 +20,33 @@ fn test_set_cmdline_multiple_times() -> Result<()> {
 
 #[test]
 fn test_set_cmdline_truncate_max_len() -> Result<()> {
-    let max_len = KillMyArgv::new()?.max_len();
+    let set_cmdline_path = get_set_cmdline_path()?;
+    let mut child = Command::new(set_cmdline_path)
+        .arg("true")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()?;
+    let child_pid = child.id();
+    let child_stdin = child.stdin.take().unwrap();
+    let child_stdout = child.stdout.take().unwrap();
+
+    let mut reader = linereader::LineReader::new(child_stdout);
+    let max_len = reader.next_line().unwrap()?;
+    let max_len = String::from_utf8_lossy(max_len).trim().parse()?;
     let expected = "o".repeat(max_len);
-    let input = "o".repeat(max_len + 1);
-    set_cmdline([input], [vec![expected]])?;
+    let input = "o".repeat(max_len * 1);
+    set_cmdline_with_child(
+        [input],
+        [vec![expected]],
+        child_stdin,
+        reader.into_inner(),
+        child_pid,
+    )?;
     Ok(())
 }
 
 mod utils;
 
 use std::error::Error;
+use std::process::{Command, Stdio};
 type Result<T> = std::result::Result<T, Box<dyn Error>>;
