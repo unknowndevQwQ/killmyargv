@@ -1,36 +1,52 @@
-use std::{error::Error, process};
-
-use killmyargv::KillMyArgv;
-use sysinfo::{Pid, ProcessRefreshKind};
+use utils::{get_set_cmdline_path, set_cmdline, set_cmdline_with_child};
 
 #[test]
-fn test_set_cmdline() -> Result<(), Box<dyn Error>> {
-    // KillMyArgv is unsafe to call in parallel.
-    // When we add new tests, we must either set this variable,
-    // or use a `Mutex` lock
-    //
-    // assert_eq!(env!("RUST_TEST_THREADS"), 1);
-    let pid = Pid::from_u32(process::id());
-    let mut system = sysinfo::System::new();
-    let kill_my_argv = KillMyArgv::new()?;
-
-    for case_str in [
-        "MAGIC USED HERE\0-p LOL",
-        "Or\0This\0--help\0--secret=***********",
-    ] {
-        kill_my_argv.set(case_str.as_bytes());
-
-        let args = case_str
-            .split_terminator('\0')
-            .map(|s| s.to_owned())
-            .collect::<Vec<String>>();
-        assert!(system.refresh_process_specifics(
-            pid,
-            ProcessRefreshKind::new().with_cmd(sysinfo::UpdateKind::Always)
-        ));
-        let set_cmdline_process = system.process(pid).expect("set-cmdline exits unexpectedly");
-        assert_eq!(set_cmdline_process.cmd(), &args);
-    }
-
+fn test_set_cmdline_once() -> Result<()> {
+    set_cmdline(["Hello?"], [vec!["Hello?"]])?;
+    set_cmdline(["Hi\0there!"], [vec!["Hi", "there!"]])?;
     Ok(())
 }
+
+#[test]
+fn test_set_cmdline_multiple_times() -> Result<()> {
+    // Note: On a sort of OS, when `**argv` is not continuous to `envp`,
+    // cmdline terminates on it's first NUL byte.
+    set_cmdline(
+        ["Hello?", "Hi\0there!"],
+        [vec!["Hello?"], vec!["Hi", "there!"]],
+    )?;
+    Ok(())
+}
+
+#[test]
+fn test_set_cmdline_truncate_max_len() -> Result<()> {
+    let set_cmdline_path = get_set_cmdline_path()?;
+    let mut child = Command::new(set_cmdline_path)
+        .arg("true")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()?;
+    let child_pid = child.id();
+    let child_stdin = child.stdin.take().unwrap();
+    let child_stdout = child.stdout.take().unwrap();
+
+    let mut reader = linereader::LineReader::new(child_stdout);
+    let max_len = reader.next_line().unwrap()?;
+    let max_len = String::from_utf8_lossy(max_len).trim().parse()?;
+    let expected = "o".repeat(max_len);
+    let input = "o".repeat(max_len * 1);
+    set_cmdline_with_child(
+        [input],
+        [vec![expected]],
+        child_stdin,
+        reader.into_inner(),
+        child_pid,
+    )?;
+    Ok(())
+}
+
+mod utils;
+
+use std::error::Error;
+use std::process::{Command, Stdio};
+type Result<T> = std::result::Result<T, Box<dyn Error>>;
