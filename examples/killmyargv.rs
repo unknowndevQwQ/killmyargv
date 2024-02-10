@@ -1,4 +1,4 @@
-use killmyargv::KillMyArgv;
+use killmyargv::{argv_addrs, KillMyArgv};
 
 use std::env::{args, args_os, set_var, vars_os};
 use std::sync::Arc;
@@ -35,7 +35,7 @@ fn main() {
     printenv();
     thread::sleep(time::Duration::from_secs(3));
 
-    if let Ok(v) = KillMyArgv::argv_addrs() {
+    if let Ok(v) = argv_addrs() {
         let (b, e) = v;
         println!("{b:?} {e:?}");
     }
