@@ -10,6 +10,8 @@ fn test_set_cmdline_once() -> Result<()> {
 
 #[test]
 fn test_set_cmdline_multiple_times() -> Result<()> {
+    // Note: On a sort of OS, when `**argv` is not continuous to `envp`,
+    // cmdline terminates on it's first NUL byte.
     set_cmdline(
         ["Hello?", "Hi\0there!"],
         [vec!["Hello?"], vec!["Hi", "there!"]],
