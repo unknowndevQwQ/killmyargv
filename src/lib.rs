@@ -232,6 +232,12 @@ impl KillMyArgv {
         self.max_len
     }
 
+    /// origin argv length, containing the terminating NUL byte.
+    /// This bit is written to a non-nul value requiring attention to os behavior.
+    pub fn nonul_byte(&self) -> Option<usize> {
+        self.nonul_byte
+    }
+
     /// Undo the args/cmdline changes.
     pub fn revert(&self) {
         let backup_chars: Vec<u8> = self
