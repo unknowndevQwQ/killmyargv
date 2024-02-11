@@ -34,7 +34,7 @@ fn test_set_cmdline_truncate_max_len() -> Result<()> {
     let max_len = reader.next_line().unwrap()?;
     let max_len = String::from_utf8_lossy(max_len).trim().parse()?;
     let expected = "o".repeat(max_len);
-    let input = "o".repeat(max_len * 1);
+    let input = "o".repeat(max_len + 114);
     set_cmdline_with_child(
         [input],
         [vec![expected]],
