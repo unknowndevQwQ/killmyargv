@@ -35,11 +35,13 @@ fn main() {
     printenv();
     thread::sleep(time::Duration::from_secs(3));
 
-    if let Ok(v) = argv_addrs() {
-        let (b, e) = v;
-        println!("{b:?} {e:?}");
+    match argv_addrs() {
+        Ok(v) => {
+            let (b, e) = v;
+            println!("{b:?} {e:?}");
+        }
+        Err(e) => println!("addrs err: {e}"),
     }
-
     println!("cmdline max len: {}", mem.max_len());
     mem.set("char_vec!".as_bytes());
     set_var("key", "value");
