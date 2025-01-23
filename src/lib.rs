@@ -113,7 +113,7 @@ fn from_env() -> Option<MemInfo> {
     let (count, ptr) = env_addr::addr()?;
     unsafe { from_addr(count, ptr) }
         .map_err(|e| {
-            trace!("{e:?}");
+            trace!("env err: {e:?}");
             e
         })
         .ok()
@@ -122,7 +122,7 @@ fn from_env() -> Option<MemInfo> {
 fn from_argv() -> Result<MemInfo, EnvError> {
     let (count, ptr) = argv_addr::addr()?;
     unsafe { from_addr(count, ptr) }.map_err(|e| {
-        trace!("{e:?}");
+        trace!("argv err: {e:?}");
         e
     })
 }
