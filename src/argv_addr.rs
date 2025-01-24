@@ -134,7 +134,7 @@ mod imp {
             #[cfg(any(
                 feature = "comp_argv",
                 feature = "stack_walking",
-                feature = "forge_walking"
+                feature = "force_walking"
             ))]
             if argv.is_null() || (*argv).is_null() {
                 use crate::env_addr::envptr;
