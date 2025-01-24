@@ -3,7 +3,7 @@ use std::{ffi::c_char, ptr};
 #[cfg(feature = "clobber_environ")]
 use log::trace;
 
-// environ() copied from https://doc.rust-lang.org/src/std/sys/unix/os.rs.html#491-502
+// environ() copied from https://github.com/rust-lang/rust/blob/1.68.0/library/src/std/sys/unix/os.rs.html#491-502
 #[cfg(target_os = "macos")]
 unsafe fn environ() -> *mut *const *const c_char {
     libc::_NSGetEnviron() as *mut *const *const c_char
@@ -35,7 +35,7 @@ pub(super) fn addr() -> Option<(usize, *const *const c_char)> {
 }
 
 #[cfg(feature = "clobber_environ")]
-// copied from https://doc.rust-lang.org/src/std/sys/unix/os.rs.html#512-544
+// copied from https://github.com/rust-lang/rust/blob/1.68.0/library/src/std/sys/unix/os.rs.html#512-544
 pub(super) fn addr() -> Option<(usize, *const *const c_char)> {
     unsafe {
         let envp = *environ();
