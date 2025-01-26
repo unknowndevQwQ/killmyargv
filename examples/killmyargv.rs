@@ -23,11 +23,13 @@ fn main() {
 
     let mem = KillMyArgv::new().expect("msg");
     fn printenv() {
-        for i in args() {
-            println!("std arg: {i:?}");
-        }
-        for (k, v) in vars_os() {
-            println!("std env_os k&v: {k:?}={v:?}");
+        if false {
+            for i in args() {
+                println!("std arg: {i:?}");
+            }
+            for (k, v) in vars_os() {
+                println!("std env_os k&v: {k:?}={v:?}");
+            }
         }
     }
     mem.set("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee????\n".as_bytes());
