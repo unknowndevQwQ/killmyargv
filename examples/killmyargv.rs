@@ -60,5 +60,10 @@ fn main() {
     println!("set le argv");
     printenv();
     pause!();
+
+    mem.set("a".repeat(6144).as_bytes());
+    println!("try set 6144 bytes to argv");
+    printenv();
+    pause!();
     println!("The end.");
 }
