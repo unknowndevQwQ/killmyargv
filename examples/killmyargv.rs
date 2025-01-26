@@ -2,9 +2,9 @@ use killmyargv::{argv_addrs, KillMyArgv};
 
 use std::env::{args, args_os, set_var, vars_os};
 use std::sync::Arc;
-use std::{thread, time};
 
 use log::{debug, info, set_max_level, trace, LevelFilter};
+use pause_console::pause_console as pause;
 use spdlog::{default_logger, init_log_crate_proxy, log_crate_proxy, LogCrateProxy, Logger};
 
 fn main() {
@@ -35,7 +35,7 @@ fn main() {
     mem.set("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee????\n".as_bytes());
     println!("set gr argv");
     printenv();
-    thread::sleep(time::Duration::from_secs(3));
+    pause!();
 
     match argv_addrs() {
         Ok(v) => {
@@ -49,16 +49,16 @@ fn main() {
     set_var("key", "value");
     println!("set le argv and env");
     printenv();
-    thread::sleep(time::Duration::from_secs(3));
+    pause!();
 
     mem.revert();
     println!("revert argv");
     printenv();
-    thread::sleep(time::Duration::from_secs(3));
+    pause!();
 
     mem.set(b"aaaaaaaaaaaaaaaaaaaa\0bbbbb12\088");
     println!("set le argv");
     printenv();
-    thread::sleep(time::Duration::from_secs(3));
+    pause!();
     println!("The end.");
 }

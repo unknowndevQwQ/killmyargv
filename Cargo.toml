@@ -14,6 +14,7 @@ spdlog-rs = {features = ["log"], version = "0.3.12"}
 test-binary = "3.0.2"
 base64 = "0.21.7"
 linereader = "0.4.0"
+pause_console = "0.2.0"
 
 [features]
 default = ["clobber_environ", "comp_argv", "stack_walking", "replace_argv_element", "replace_environ_element"]
