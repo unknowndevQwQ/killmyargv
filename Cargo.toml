@@ -2,6 +2,13 @@
 name = "killmyargv"
 version = "0.1.0"
 edition = "2021"
+categories = ["os"]
+description = "as WIP, Ending your life with implementation-defined behavior"
+exclude = ["tests/", "testbin/"]
+license = "MIT"
+keywords = ["args", "argv", "cmdline", "process", "setproctitle"]
+readme = "README.md"
+repository = "https://github.com/unknowndevQwQ/killmyargv"
 
 [dependencies]
 libc = "0.2.141"
