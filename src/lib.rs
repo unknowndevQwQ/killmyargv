@@ -274,13 +274,14 @@ impl KillMyArgv {
             // and is difficultto dispose of properly here.
             if let Some(nonul_byte) = self.nonul_byte {
                 if chars.len() > nonul_byte
-                    && dbg!(ptr::read(self.begin_addr.add(nonul_byte - 1))) == 0x00
+                    && ptr::read(self.begin_addr.add(nonul_byte - 1)) == 0x00
                 {
-                    dbg!(ptr::write_bytes(
-                        self.begin_addr.add(nonul_byte - 1),
-                        0x01,
-                        1
-                    ));
+                    warn!("{}", format!(
+                        "Note! you try in nonul byte({nonul_byte}) write null, {}, {}",
+                        "because there is currently no corresponding API to decide whether to fully follow the written content",
+                        "it is replaced by 0x01.")
+                    );
+                    ptr::write_bytes(self.begin_addr.add(nonul_byte - 1), 0x01, 1);
                 }
             }
             let end = ptr::read(self.end_addr);
