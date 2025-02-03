@@ -6,7 +6,7 @@ use std::env::{remove_var, set_var, vars_os};
 use std::{
     ffi::{c_char, CStr, CString, OsStr},
     os::unix::ffi::OsStrExt,
-    ptr, slice,
+    slice,
 };
 
 use log::{error, trace, warn};
@@ -261,11 +261,9 @@ impl KillMyArgv {
             if chars.len() < self.max_len {
                 slice::from_raw_parts_mut(self.begin_addr, chars.len()).copy_from_slice(chars);
 
-                ptr::write_bytes(
-                    self.begin_addr.add(chars.len()),
-                    0x00,
-                    self.max_len - chars.len(),
-                );
+                self.begin_addr
+                    .add(chars.len())
+                    .write_bytes(0x00, self.max_len - chars.len());
             } else {
                 slice::from_raw_parts_mut(self.begin_addr, self.max_len)
                     .copy_from_slice(&chars[..self.max_len]);
@@ -273,18 +271,16 @@ impl KillMyArgv {
             // It should be handled by advanced packaging or users,
             // and is difficultto dispose of properly here.
             if let Some(nonul_byte) = self.nonul_byte {
-                if chars.len() > nonul_byte
-                    && ptr::read(self.begin_addr.add(nonul_byte - 1)) == 0x00
-                {
+                if chars.len() > nonul_byte && self.begin_addr.add(nonul_byte - 1).read() == 0x00 {
                     warn!("{}", format!(
                         "Note! you try in nonul byte({nonul_byte}) write null, {}, {}",
                         "because there is currently no corresponding API to decide whether to fully follow the written content",
                         "it is replaced by 0x01.")
                     );
-                    ptr::write_bytes(self.begin_addr.add(nonul_byte - 1), 0x01, 1);
+                    self.begin_addr.add(nonul_byte - 1).write(0x01);
                 }
             }
-            let end = ptr::read(self.end_addr);
+            let end = self.end_addr.read();
             if end != 0x00 {
                 error!("BUG! Unexpected non-null value: {end:?}");
             }
