@@ -210,7 +210,7 @@ mod imp {
     pub unsafe fn init(_argc: isize, _argv: *const *const c_char) {}
 
     #[cfg(target_os = "macos")]
-    pub fn addr() -> Result<MemInfo, EnvError> {
+    pub fn addr() -> Result<(usize, *const *const c_char), EnvError> {
         extern "C" {
             // These functions are in crt_externs.h.
             fn _NSGetArgc() -> *mut c_int;
@@ -227,7 +227,7 @@ mod imp {
             } else {
                 Ok((argc as usize, argv))
             }
-        };
+        }
     }
 
     // As _NSGetArgc and _NSGetArgv aren't mentioned in iOS docs
