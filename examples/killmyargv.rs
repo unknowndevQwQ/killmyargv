@@ -1,9 +1,9 @@
 use killmyargv::{argv_addrs, KillMyArgv};
 
-use std::env::{args, args_os, set_var, vars_os};
+use std::env::{args, set_var, vars_os};
 use std::sync::Arc;
 
-use log::{debug, info, set_max_level, trace, LevelFilter};
+use log::{debug, error, info, set_max_level, warn, LevelFilter};
 use pause_console::pause_console as pause;
 use spdlog::{
     default_logger,
@@ -23,56 +23,63 @@ fn main() {
         sink.set_formatter(formatter.clone());
     }
 
-    println!("Hi!");
-    println!("argc: {}", args().len());
+    println!("Hi!, look at me!");
+    warn!("I'm here!!!");
+    info!("argc from std: {}", args().len());
 
-    let mem = KillMyArgv::new().expect("msg");
+    let mem = KillMyArgv::new().expect("try init fail");
     fn printenv() {
         if false {
             for i in args() {
-                println!("std arg: {i:?}");
+                debug!("std arg: {i:?}");
             }
             for (k, v) in vars_os() {
-                println!("std env_os k&v: {k:?}={v:?}");
+                debug!("std env_os k&v: {k:?}={v:?}");
             }
         }
     }
+    pause!();
+
     mem.set("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee????\n".as_bytes());
-    println!("set gr argv");
+    info!("set gr argv");
     printenv();
     pause!();
 
+    warn!(
+        "Getting the address via argv_addrs() after initialization is not supported, {}",
+        "the behavior is shown here."
+    );
     match argv_addrs() {
         Ok(v) => {
             let (b, e) = v;
-            println!("{b:?} {e:?}");
+            warn!("reget argv start={b:?} end={e:?}");
         }
-        Err(e) => println!("addrs err: {e}"),
+        Err(e) => error!("reget addrs err: {e}"),
     }
-    println!("cmdline max len: {}", mem.max_len());
+    info!("cmdline max len: {}", mem.max_len());
     mem.set("char_vec!".as_bytes());
     set_var("key", "value");
-    println!("set le argv and env");
+    info!("set le argv and env");
     printenv();
     pause!();
 
     mem.revert();
-    println!("revert argv");
+    info!("revert argv");
     printenv();
     pause!();
 
     mem.set(b"aaaaaaaaaaaaaaaaaaaa\0bbbbb12\09988");
-    println!("set le argv");
+    info!("set le argv");
     printenv();
     pause!();
 
     mem.set("a".repeat(6144).as_bytes());
-    println!("try set 6144 bytes to argv");
+    info!("try set 6144 bytes to argv");
     printenv();
     pause!();
 
     mem.revert();
-    println!("revert argv");
+    info!("revert argv");
     printenv();
     pause!();
 
@@ -83,9 +90,9 @@ fn main() {
         // but currently only nonul_byte is checked for null.
         s[nonul_byte - 1] = 0;
         mem.set(&s);
-        println!("try set 6144(nonul_byte is null) bytes to argv");
+        info!("try set 6144(nonul_byte is null) bytes to argv");
         printenv();
         pause!();
     }
-    println!("The end.");
+    error!("The end.");
 }
