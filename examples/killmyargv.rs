@@ -76,7 +76,7 @@ fn main() {
         // If the length is greater than or equal to nonul_byte and null exists,
         // the set cmdline will be truncated at the null character,
         // but currently only nonul_byte is checked for null.
-        s[nonul_byte - 1 ] = 0;
+        s[nonul_byte - 1] = 0;
         mem.set(&s);
         println!("try set 6144(nonul_byte is null) bytes to argv");
         printenv();
