@@ -56,7 +56,7 @@ fn main() {
     printenv();
     pause!();
 
-    mem.set(b"aaaaaaaaaaaaaaaaaaaa\0bbbbb12\088");
+    mem.set(b"aaaaaaaaaaaaaaaaaaaa\0bbbbb12\09988");
     println!("set le argv");
     printenv();
     pause!();
