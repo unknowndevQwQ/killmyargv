@@ -5,21 +5,26 @@ use std::sync::Arc;
 
 use log::{debug, info, set_max_level, trace, LevelFilter};
 use pause_console::pause_console as pause;
-use spdlog::{default_logger, init_log_crate_proxy, log_crate_proxy, LogCrateProxy, Logger};
+use spdlog::{
+    default_logger,
+    formatter::{pattern, PatternFormatter},
+    init_log_crate_proxy, Logger,
+};
 
 fn main() {
     init_log_crate_proxy().expect("users should only call `init_log_crate_proxy` function once");
+    set_max_level(LevelFilter::Trace);
+    let logger: Arc<Logger> = default_logger();
+    logger.set_level_filter(spdlog::LevelFilter::All);
+    let formatter = Box::new(PatternFormatter::new(pattern!(
+        "[{date} {time}.{nanosecond}] [{logger}] [{^{level}}] [{module_path}, {source}] [{pid}/{tid}] {payload}{eol}"
+    )));
+    for sink in logger.sinks() {
+        sink.set_formatter(formatter.clone());
+    }
+
     println!("Hi!");
     println!("argc: {}", args().len());
-
-    set_max_level(LevelFilter::Trace);
-
-    let custom_logger: Arc<Logger> = default_logger();
-
-    // Logs will be output to `custom_logger`.
-    let proxy: &'static LogCrateProxy = log_crate_proxy();
-    custom_logger.set_level_filter(spdlog::LevelFilter::All);
-    //proxy.set_logger(Some(custom_logger));
 
     let mem = KillMyArgv::new().expect("msg");
     fn printenv() {
