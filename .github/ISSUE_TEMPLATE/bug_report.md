@@ -26,12 +26,12 @@ If applicable, add screenshots to help explain your problem.
 **Platform (please complete the following information):**
  - OS: [e.g. OpenIndiana]
  - OS Version: [Release 2024.04]
- - Arch [e.g. arm64, x86-64]
- - lib Version [e.g. 22]
-- `$ env` output:
+ - Arch: [e.g. arm64, x86-64]
+ - lib Version: [e.g. 0.1.0/1e57761]
+ - `$ env` output:
 ```
 ```
-- command args [e.g. `killmyargv --op1 arg1 arg2`]
+ - command args: [e.g. `killmyargv --op1 arg1 arg2`]
 
 **Additional context**
 Add any other context about the problem here.
