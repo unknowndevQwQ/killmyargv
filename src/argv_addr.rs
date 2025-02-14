@@ -1,5 +1,9 @@
 use super::EnvError;
-use std::ffi::c_char;
+use crate::env_addr::envptr;
+use std::ffi::{c_char, c_int};
+
+use log::{debug, trace};
+
 // init() copied from https://doc.rust-lang.org/src/std/sys/unix/args.rs.html#12-15
 // But what's the point?
 #[allow(unused)]
@@ -17,7 +21,101 @@ pub unsafe fn init(argc: isize, argv: *const *const c_char) {
 /// https://github.com/rust-lang/rust/pull/106001
 /// https://github.com/rust-lang/rust/commit/e97203c3f893893611818997bbeb0116ded2605f
 pub(super) fn addr() -> Result<(usize, *const *const c_char), EnvError> {
-    imp::addr()
+    let (argc, argv) = imp::addr();
+    debug!(
+        "imp argc: {argc}, argv: {argv:?}, is null={}",
+        argv.is_null()
+    );
+
+    #[cfg(any(
+        feature = "comp_argv",
+        feature = "stack_walking",
+        feature = "force_walking"
+    ))]
+    if argv.is_null() || (unsafe { *argv }).is_null() {
+        debug!("failed from imp get argv, try compute/stackwalking");
+        comp_argv()
+    } else {
+        Ok((argc as usize, argv))
+    }
+    #[cfg(all(
+        not(feature = "comp_argv"),
+        not(feature = "stack_walking"),
+        not(feature = "force_walking")
+    ))]
+    if argv.is_null() || (unsafe { *argv }).is_null() {
+        Err(EnvError::InvalidArgvPointer)
+    } else {
+        Ok((argc as usize, argv))
+    }
+}
+
+// from: https://github.com/leo60228/libargs/blob/master/src/lib.rs#L16-L30
+// or `fn from_backtrace(...) -> (...)`?
+fn from_stack_walking(environ: *const *const c_char) -> (usize, *const *const c_char) {
+    let mut walk_environ = environ as *const usize;
+    walk_environ = walk_environ.wrapping_sub(1);
+    let mut i = 0;
+
+    loop {
+        let argc_ptr = walk_environ.wrapping_sub(1) as *const c_int;
+        let argc = unsafe { *argc_ptr };
+        if argc == i {
+            break (argc as usize, walk_environ as *const *const c_char);
+        }
+        walk_environ = walk_environ.wrapping_sub(1);
+        i += 1;
+    }
+}
+
+fn comp_argv() -> Result<(usize, *const *const i8), EnvError> {
+    let envp = unsafe { envptr().ok_or(EnvError::FailedToGetArgvPointer) }?;
+
+    #[cfg(feature = "force_walking")]
+    {
+        debug!("forge walking...");
+        return Ok(from_stack_walking(envp));
+    }
+
+    #[cfg(not(feature = "force_walking"))]
+    {
+        use std::{
+            env::args_os,
+            ffi::{CStr, OsStr},
+            os::unix::ffi::OsStrExt,
+        };
+        let mut args = args_os();
+        trace!("std args: {:#?}", &args);
+        if args.len() == 0 {
+            trace!("std args is empty, try stack walking");
+            #[cfg(feature = "stack_walking")]
+            return Ok(from_stack_walking(envp));
+
+            #[cfg(not(feature = "stack_walking"))]
+            return Err(EnvError::FailedToGetArgvPointer);
+        }
+
+        let std_argc = args.len();
+        // *environ[] == *argv[] + argc + 1, aka
+        // *argv[] = *environ[] - (argc + 1)
+        unsafe {
+            let comp_argv = envp.sub(std_argc + 1);
+            trace!("environ ptr: {envp:?}, argc from std: {std_argc:?}, computed argv: {comp_argv:?}, point to: {:?}", (*comp_argv));
+            if comp_argv.is_null() || (*comp_argv).is_null() {
+                return Err(EnvError::InvalidArgvPointer);
+            }
+
+            let frist = args.next().ok_or(EnvError::InvalidArgvPointer)?;
+            trace!("try read comp argv[0]");
+            let argv_frist = OsStr::from_bytes(CStr::from_ptr(*comp_argv).to_bytes());
+            trace!("comp argv[0]: {argv_frist:?}, std argv[0]: {frist:?}");
+            if argv_frist == frist {
+                Ok((std_argc, comp_argv))
+            } else {
+                Err(EnvError::InvalidArgvPointer)
+            }
+        }
+    }
 }
 
 #[cfg(any(
@@ -39,20 +137,10 @@ pub(super) fn addr() -> Result<(usize, *const *const c_char), EnvError> {
 ))]
 mod imp {
     use std::{
-        ffi::{c_char, c_int},
+        ffi::c_char,
         ptr,
         sync::atomic::{AtomicIsize, AtomicPtr, Ordering},
     };
-
-    #[cfg(not(feature = "force_walking"))]
-    use std::{
-        ffi::{CStr, OsStr},
-        os::unix::ffi::OsStrExt,
-    };
-
-    use super::EnvError;
-
-    use log::trace;
 
     // The system-provided argc and argv, which we store in static memory
     // here so that we can defer the work of parsing them until its actually
@@ -85,9 +173,13 @@ mod imp {
     #[cfg(all(target_os = "linux", target_env = "gnu"))]
     #[used]
     #[link_section = ".init_array.00099"]
-    static ARGV_INIT_ARRAY: extern "C" fn(c_int, *const *const c_char, *const *const c_char) = {
+    static ARGV_INIT_ARRAY: extern "C" fn(
+        std::ffi::c_int,
+        *const *const c_char,
+        *const *const c_char,
+    ) = {
         extern "C" fn init_wrapper(
-            argc: c_int,
+            argc: std::ffi::c_int,
             argv: *const *const c_char,
             _envp: *const *const c_char,
         ) {
@@ -98,106 +190,19 @@ mod imp {
         init_wrapper
     };
 
-    // from: https://github.com/leo60228/libargs/blob/master/src/lib.rs#L16-L30
-    // or `fn from_backtrace(...) -> (...)`?
-    fn from_stack_walking(environ: *const *const c_char) -> (usize, *const *const c_char) {
-        let mut walk_environ = environ as *const usize;
-        walk_environ = walk_environ.wrapping_sub(1);
-        let mut i = 0;
+    pub(super) fn addr() -> (usize, *const *const c_char) {
+        // Load ARGC and ARGV, which hold the unmodified system-provided
+        // argc/argv, so we can read the pointed-to memory without atomics
+        // or synchronization.
+        //
+        // If either ARGC or ARGV is still zero or null, then either there
+        // really are no arguments, or someone is asking for `args()`
+        // before initialization has completed, and we return an empty
+        // list.
 
-        loop {
-            let argc_ptr = walk_environ.wrapping_sub(1) as *const c_int;
-            let argc = unsafe { *argc_ptr };
-            if argc == i {
-                break (argc as usize, walk_environ as *const *const c_char);
-            }
-            walk_environ = walk_environ.wrapping_sub(1);
-            i += 1;
-        }
-    }
-
-    pub(super) fn addr() -> Result<(usize, *const *const c_char), EnvError> {
-        unsafe {
-            // Load ARGC and ARGV, which hold the unmodified system-provided
-            // argc/argv, so we can read the pointed-to memory without atomics
-            // or synchronization.
-            //
-            // If either ARGC or ARGV is still zero or null, then either there
-            // really are no arguments, or someone is asking for `args()`
-            // before initialization has completed, and we return an empty
-            // list.
-
-            let argv = ARGV.load(Ordering::Relaxed);
-            let argc = ARGC.load(Ordering::Relaxed);
-            trace!("argc: {argc}, argv: {argv:?}");
-
-            #[cfg(any(
-                feature = "comp_argv",
-                feature = "stack_walking",
-                feature = "force_walking"
-            ))]
-            if argv.is_null() || (*argv).is_null() {
-                use crate::env_addr::envptr;
-
-                #[cfg(not(feature = "force_walking"))]
-                use std::env::args_os;
-
-                let envp = envptr().ok_or(EnvError::FailedToGetArgvPointer)?;
-
-                #[cfg(feature = "force_walking")]
-                return Ok(from_stack_walking(envp));
-
-                #[cfg(not(feature = "force_walking"))]
-                {
-                    let mut args = args_os();
-                    let mut args_is_empty = false;
-                    trace!("args: {:#?}", &args);
-                    if args.len() == 0 {
-                        args_is_empty = true;
-                        trace!("std args is empty");
-                    }
-
-                    if args_is_empty {
-                        #[cfg(feature = "stack_walking")]
-                        return Ok(from_stack_walking(envp));
-
-                        #[cfg(not(feature = "stack_walking"))]
-                        return Err(EnvError::FailedToGetArgvPointer);
-                    }
-
-                    let std_argc = args.len();
-                    // *environ[] == *argv[] + argc + 1, aka
-                    // *argv[] = *environ[] - (argc + 1)
-                    let comp_argv = envp.sub(std_argc + 1);
-                    trace!("environ ptr: {envp:?}, argc from std: {std_argc:?}, computed argv: {comp_argv:?}, point to: {:?}", (*comp_argv));
-                    if comp_argv.is_null() || (*comp_argv).is_null() {
-                        return Err(EnvError::InvalidArgvPointer);
-                    }
-
-                    let frist = args.next().ok_or(EnvError::InvalidArgvPointer)?;
-                    trace!("try read comp argv[0]");
-                    let argv_frist = OsStr::from_bytes(CStr::from_ptr(*comp_argv).to_bytes());
-                    trace!("comp argv[0]: {argv_frist:?}, std argv[0]: {frist:?}");
-                    if argv_frist == frist {
-                        Ok((std_argc, comp_argv))
-                    } else {
-                        Err(EnvError::InvalidArgvPointer)
-                    }
-                }
-            } else {
-                Ok((argc as usize, argv))
-            }
-            #[cfg(all(
-                not(feature = "comp_argv"),
-                not(feature = "stack_walking"),
-                not(feature = "force_walking")
-            ))]
-            if argv.is_null() || (*argv).is_null() {
-                Err(EnvError::InvalidArgvPointer)
-            } else {
-                Ok((argc as usize, argv))
-            }
-        }
+        let argv = ARGV.load(Ordering::Relaxed);
+        let argc = ARGC.load(Ordering::Relaxed);
+        (argc as usize, argv)
     }
 }
 
@@ -206,12 +211,10 @@ mod imp {
 mod imp {
     use std::ffi::{c_char, c_int};
 
-    use super::EnvError;
-
     pub unsafe fn init(_argc: isize, _argv: *const *const c_char) {}
 
     #[cfg(target_os = "macos")]
-    pub fn addr() -> Result<(usize, *const *const c_char), EnvError> {
+    pub fn addr() -> (usize, *const *const c_char) {
         extern "C" {
             // These functions are in crt_externs.h.
             fn _NSGetArgc() -> *mut c_int;
@@ -223,11 +226,7 @@ mod imp {
                 *_NSGetArgc() as isize,
                 *_NSGetArgv() as *const *const c_char,
             );
-            if argv.is_null() || (*argv).is_null() {
-                Err(EnvError::InvalidArgvPointer)
-            } else {
-                Ok((argc as usize, argv))
-            }
+            (argc as usize, argv)
         }
     }
 
