@@ -9,7 +9,7 @@ use log::{debug, trace};
 #[allow(unused)]
 /// One-time global initialization.
 /// The above statement was made by rust std, and no one here is responsible for that statement.
-pub unsafe fn init(argc: isize, argv: *const *const c_char) {
+pub unsafe fn init(argc: isize, argv: *const *const u8) {
     imp::init(argc, argv)
 }
 
@@ -21,7 +21,7 @@ pub unsafe fn init(argc: isize, argv: *const *const c_char) {
 /// https://github.com/rust-lang/rust/pull/106001
 /// https://github.com/rust-lang/rust/commit/e97203c3f893893611818997bbeb0116ded2605f
 pub(super) fn addr() -> Result<(usize, *const *const c_char), EnvError> {
-    let (argc, argv) = imp::addr();
+    let (argc, argv) = imp::argc_argv();
     debug!(
         "imp argc: {argc}, argv: {argv:?}, is null={}",
         argv.is_null()
@@ -118,6 +118,7 @@ fn comp_argv() -> Result<(usize, *const *const i8), EnvError> {
     }
 }
 
+// imp::argc_argv() copied from: https://github.com/rust-lang/rust/blob/1.84.1/library/std/src/sys/pal/unix/args.rs#L96-L182
 #[cfg(any(
     target_os = "linux",
     target_os = "android",
@@ -133,14 +134,17 @@ fn comp_argv() -> Result<(usize, *const *const i8), EnvError> {
     target_os = "fuchsia",
     target_os = "redox",
     target_os = "vxworks",
-    target_os = "horizon"
+    target_os = "horizon",
+    target_os = "aix",
+    target_os = "nto",
+    target_os = "hurd",
+    target_os = "rtems",
+    target_os = "nuttx",
 ))]
 mod imp {
-    use std::{
-        ffi::c_char,
-        ptr,
-        sync::atomic::{AtomicIsize, AtomicPtr, Ordering},
-    };
+    use core::ffi::c_char;
+    use core::ptr;
+    use core::sync::atomic::{AtomicIsize, AtomicPtr, Ordering};
 
     // The system-provided argc and argv, which we store in static memory
     // here so that we can defer the work of parsing them until its actually
@@ -149,23 +153,20 @@ mod imp {
     // Note that we never mutate argv/argc, the argv array, or the argv
     // strings, which allows the code in this file to be very simple.
     static ARGC: AtomicIsize = AtomicIsize::new(0);
-    static ARGV: AtomicPtr<*const c_char> = AtomicPtr::new(ptr::null_mut());
+    static ARGV: AtomicPtr<*const u8> = AtomicPtr::new(ptr::null_mut());
 
-    unsafe fn really_init(argc: isize, argv: *const *const c_char) {
+    unsafe fn really_init(argc: isize, argv: *const *const u8) {
         // These don't need to be ordered with each other or other stores,
         // because they only hold the unmodified system-provide argv/argc.
         ARGC.store(argc, Ordering::Relaxed);
         ARGV.store(argv as *mut _, Ordering::Relaxed);
     }
 
-    #[cfg_attr(all(target_os = "linux", target_env = "gnu"), allow(unused))]
     #[inline(always)]
-    pub unsafe fn init(_argc: isize, _argv: *const *const c_char) {
-        // On Linux-GNU, we rely on `ARGV_INIT_ARRAY` below to initialize
-        // `ARGC` and `ARGV`. But in Miri that does not actually happen so we
-        // still initialize here.
-        #[cfg(any(miri, not(all(target_os = "linux", target_env = "gnu"))))]
-        really_init(_argc, _argv);
+    pub unsafe fn init(argc: isize, argv: *const *const u8) {
+        // on GNU/Linux if we are main then we will init argv and argc twice, it "duplicates work"
+        // BUT edge-cases are real: only using .init_array can break most emulators, dlopen, etc.
+        really_init(argc, argv);
     }
 
     /// glibc passes argc, argv, and envp to functions in .init_array, as a non-standard extension.
@@ -174,14 +175,14 @@ mod imp {
     #[used]
     #[link_section = ".init_array.00099"]
     static ARGV_INIT_ARRAY: extern "C" fn(
-        std::ffi::c_int,
-        *const *const c_char,
-        *const *const c_char,
+        core::ffi::c_int,
+        *const *const u8,
+        *const *const u8,
     ) = {
         extern "C" fn init_wrapper(
-            argc: std::ffi::c_int,
-            argv: *const *const c_char,
-            _envp: *const *const c_char,
+            argc: core::ffi::c_int,
+            argv: *const *const u8,
+            _envp: *const *const u8,
         ) {
             unsafe {
                 really_init(argc as isize, argv);
@@ -190,118 +191,65 @@ mod imp {
         init_wrapper
     };
 
-    pub(super) fn addr() -> (usize, *const *const c_char) {
+    pub fn argc_argv() -> (isize, *const *const c_char) {
         // Load ARGC and ARGV, which hold the unmodified system-provided
-        // argc/argv, so we can read the pointed-to memory without atomics
-        // or synchronization.
+        // argc/argv, so we can read the pointed-to memory without atomics or
+        // synchronization.
         //
         // If either ARGC or ARGV is still zero or null, then either there
-        // really are no arguments, or someone is asking for `args()`
-        // before initialization has completed, and we return an empty
-        // list.
-
+        // really are no arguments, or someone is asking for `args()` before
+        // initialization has completed, and we return an empty list.
         let argv = ARGV.load(Ordering::Relaxed);
-        let argc = ARGC.load(Ordering::Relaxed);
-        (argc as usize, argv)
+        let argc = if argv.is_null() { 0 } else { ARGC.load(Ordering::Relaxed) };
+
+        // Cast from `*mut *const u8` to `*const *const c_char`
+        (argc, argv.cast())
     }
 }
 
-// Not yet tested
-#[cfg(any(target_os = "macos", target_os = "ios", target_os = "watchos"))]
+// Use `_NSGetArgc` and `_NSGetArgv` on Apple platforms.
+//
+// Even though these have underscores in their names, they've been available
+// since the first versions of both macOS and iOS, and are declared in
+// the header `crt_externs.h`.
+//
+// NOTE: This header was added to the iOS 13.0 SDK, which has been the source
+// of a great deal of confusion in the past about the availability of these
+// APIs.
+//
+// NOTE(madsmtm): This has not strictly been verified to not cause App Store
+// rejections; if this is found to be the case, the previous implementation
+// of this used `[[NSProcessInfo processInfo] arguments]`.
+#[cfg(target_vendor = "apple")]
 mod imp {
-    use std::ffi::{c_char, c_int};
+    use core::ffi::{c_char, c_int};
 
-    pub unsafe fn init(_argc: isize, _argv: *const *const c_char) {}
+    pub unsafe fn init(_argc: isize, _argv: *const *const u8) {
+        // No need to initialize anything in here, `libdyld.dylib` has already
+        // done the work for us.
+    }
 
-    #[cfg(target_os = "macos")]
-    pub fn addr() -> (usize, *const *const c_char) {
+    pub fn argc_argv() -> (isize, *const *const c_char) {
         extern "C" {
             // These functions are in crt_externs.h.
             fn _NSGetArgc() -> *mut c_int;
             fn _NSGetArgv() -> *mut *mut *mut c_char;
         }
 
-        unsafe {
-            let (argc, argv) = (
-                *_NSGetArgc() as isize,
-                *_NSGetArgv() as *const *const c_char,
-            );
-            (argc as usize, argv)
-        }
+        // SAFETY: The returned pointer points to a static initialized early
+        // in the program lifetime by `libdyld.dylib`, and as such is always
+        // valid.
+        //
+        // NOTE: Similar to `_NSGetEnviron`, there technically isn't anything
+        // protecting us against concurrent modifications to this, and there
+        // doesn't exist a lock that we can take. Instead, it is generally
+        // expected that it's only modified in `main` / before other code
+        // runs, so reading this here should be fine.
+        let argc = unsafe { _NSGetArgc().read() };
+        // SAFETY: Same as above.
+        let argv = unsafe { _NSGetArgv().read() };
+
+        // Cast from `*mut *mut c_char` to `*const *const c_char`
+        (argc as isize, argv.cast())
     }
-
-    // As _NSGetArgc and _NSGetArgv aren't mentioned in iOS docs
-    // and use underscores in their names - they're most probably
-    // are considered private and therefore should be avoided
-    // Here is another way to get arguments using Objective C
-    // runtime
-    //
-    // In general it looks like:
-    // res = Vec::new()
-    // let args = [[NSProcessInfo processInfo] arguments]
-    // for i in (0..[args count])
-    //      res.push([args objectAtIndex:i])
-    // res
-
-    // TODO
-    // But does anyone really need it?
-    #[cfg(any(target_os = "ios", target_os = "watchos"))]
-    pub fn addr() -> Result<MemInfo, EnvError> {
-        EnvError(EnvError::InvalidArgvPointer)
-    }
-    /*
-    pub fn args() -> Args {
-        use crate::ffi::OsString;
-        use crate::mem;
-        use crate::str;
-
-        extern "C" {
-            fn sel_registerName(name: *const libc::c_uchar) -> Sel;
-            fn objc_getClass(class_name: *const libc::c_uchar) -> NsId;
-        }
-
-        #[cfg(target_arch = "aarch64")]
-        extern "C" {
-            fn objc_msgSend(obj: NsId, sel: Sel) -> NsId;
-            #[allow(clashing_extern_declarations)]
-            #[link_name = "objc_msgSend"]
-            fn objc_msgSend_ul(obj: NsId, sel: Sel, i: libc::c_ulong) -> NsId;
-        }
-
-        #[cfg(not(target_arch = "aarch64"))]
-        extern "C" {
-            fn objc_msgSend(obj: NsId, sel: Sel, ...) -> NsId;
-            #[allow(clashing_extern_declarations)]
-            #[link_name = "objc_msgSend"]
-            fn objc_msgSend_ul(obj: NsId, sel: Sel, ...) -> NsId;
-        }
-
-        type Sel = *mut libc::c_void;
-        type NsId = *mut libc::c_void;
-
-        let mut res = Vec::new();
-
-        unsafe {
-            let process_info_sel = sel_registerName("processInfo\0".as_ptr());
-            let arguments_sel = sel_registerName("arguments\0".as_ptr());
-            let utf8_sel = sel_registerName("UTF8String\0".as_ptr());
-            let count_sel = sel_registerName("count\0".as_ptr());
-            let object_at_sel = sel_registerName("objectAtIndex:\0".as_ptr());
-
-            let klass = objc_getClass("NSProcessInfo\0".as_ptr());
-            let info = objc_msgSend(klass, process_info_sel);
-            let args = objc_msgSend(info, arguments_sel);
-
-            let cnt: usize = mem::transmute(objc_msgSend(args, count_sel));
-            for i in 0..cnt {
-                let tmp = objc_msgSend_ul(args, object_at_sel, i as libc::c_ulong);
-                let utf_c_str: *mut libc::c_char = mem::transmute(objc_msgSend(tmp, utf8_sel));
-                let bytes = CStr::from_ptr(utf_c_str).to_bytes();
-                res.push(OsString::from(str::from_utf8(bytes).unwrap()))
-            }
-        }
-
-        Args { iter: res.into_iter() }
-    }
-    */
 }
