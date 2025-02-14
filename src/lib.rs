@@ -9,7 +9,7 @@ use std::{
     slice,
 };
 
-use log::{error, trace, warn};
+use log::{debug, error, trace, warn};
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -139,6 +139,7 @@ impl KillMyArgv {
     }
 
     pub fn new() -> Result<KillMyArgv, EnvError> {
+        debug!("current target: {}", env!("TARGET"));
         let argv_mem = from_argv()?;
 
         if let Some(env_mem) = from_env() {

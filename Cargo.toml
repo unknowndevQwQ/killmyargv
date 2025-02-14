@@ -2,6 +2,7 @@
 name = "killmyargv"
 version = "0.1.0"
 edition = "2021"
+build = "build.rs"
 categories = ["os"]
 description = "as WIP, Ending your life with implementation-defined behavior"
 exclude = ["tests/", "testbin/"]
