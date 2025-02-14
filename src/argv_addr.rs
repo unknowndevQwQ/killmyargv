@@ -169,12 +169,13 @@ mod imp {
                     // *environ[] == *argv[] + argc + 1, aka
                     // *argv[] = *environ[] - (argc + 1)
                     let comp_argv = envp.sub(std_argc + 1);
-                    trace!("environ ptr: {envp:?}, argc from std: {std_argc:?}, computed argv: {comp_argv:?}");
+                    trace!("environ ptr: {envp:?}, argc from std: {std_argc:?}, computed argv: {comp_argv:?}, point to: {:?}", (*comp_argv));
                     if comp_argv.is_null() || (*comp_argv).is_null() {
                         return Err(EnvError::InvalidArgvPointer);
                     }
 
                     let frist = args.next().ok_or(EnvError::InvalidArgvPointer)?;
+                    trace!("try read comp argv[0]");
                     let argv_frist = OsStr::from_bytes(CStr::from_ptr(*comp_argv).to_bytes());
                     trace!("comp argv[0]: {argv_frist:?}, std argv[0]: {frist:?}");
                     if argv_frist == frist {
