@@ -66,10 +66,7 @@ unsafe fn from_addr(count: usize, ptr: *const *const c_char) -> Result<MemInfo, 
         );
     }
     for (i, cstr_ptr) in cstr_ptrs.into_iter().enumerate() {
-        trace!(
-            "string[{i}] ptr info: current ptr={:?}, point to={cstr_ptr:?}",
-            cstr_ptr as *const _
-        );
+        trace!("string[{i}]={cstr_ptr:?}, ptr={:?}", cstr_ptr as *const _);
         if cstr_ptr.is_null() {
             warn!("the string[{i}] is null, pls check");
             break;
@@ -80,7 +77,7 @@ unsafe fn from_addr(count: usize, ptr: *const *const c_char) -> Result<MemInfo, 
         byte_len += cstr_len;
 
         trace!(
-            "string[{i}] collect: recorded len={byte_len}, start addr={cstr_ptr:?}, len={cstr_len}, end addr (with null)={:?}",
+            "collect: string[{i}] recorded len={byte_len}, range(with null): {cstr_ptr:?} -> {:?}, len={cstr_len}",
             cstr_ptr.add(cstr_len - 1)
         );
         if i == count - 1 {
@@ -90,8 +87,8 @@ unsafe fn from_addr(count: usize, ptr: *const *const c_char) -> Result<MemInfo, 
             end_addr = cstr_ptr.add(cstr_len - 1);
         }
     }
-    trace!(
-        "collect count: {count}, string ptr: {ptr:?}, addr: {:?} -> {end_addr:?}, len: {byte_len}, vec_cap: {}",
+    debug!(
+        "collect count={count}, ptr={ptr:?}, range: {:?} -> {end_addr:?}, len={byte_len}, vec_cap={}",
         *ptr, saved.capacity()
     );
     if byte_len != 0 {
@@ -156,14 +153,14 @@ impl KillMyArgv {
             #[cfg(feature = "replace_argv_element")]
             for i in (0..argv_mem.element).rev() {
                 if let Some(new_ptr) = new_argvp.pop() {
-                    trace!("processing argc: {i}, ptr: {new_ptr:?}");
+                    debug!("processing argv[{i}], ptr={new_ptr:?}");
                     unsafe {
                         let ptr = argv_mem.pointer_addr as *mut *const c_char;
                         trace!("ptrs: {:?}, {:?}, {new_ptr:?}", *ptr.add(i), ptr.add(i));
                         ptr.add(i).write(new_ptr);
                     }
                 } else {
-                    trace!("new_argvp as none");
+                    warn!("new_argvp as none");
                 }
             }
 
@@ -207,14 +204,14 @@ impl KillMyArgv {
             #[cfg(feature = "replace_argv_element")]
             for i in (0..argv_mem.element).rev() {
                 if let Some(new_ptr) = new_argvp.pop() {
-                    trace!("processing argc: {i}, ptr: {new_ptr:?}");
+                    debug!("processing argv[{i}], ptr={new_ptr:?}");
                     unsafe {
                         let ptr = argv_mem.pointer_addr as *mut *const c_char;
                         ptr.add(i).write(new_ptr);
                         trace!("ptrs: {:?}, {:?}, {new_ptr:?}", *ptr.add(i), ptr.add(i));
                     }
                 } else {
-                    trace!("argv ptr as empty");
+                    warn!("argv ptr as empty");
                 }
             }
 

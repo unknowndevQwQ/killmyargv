@@ -1,7 +1,7 @@
 use std::ffi::c_char;
 
 #[cfg(feature = "clobber_environ")]
-use log::trace;
+use log::{debug, trace};
 
 // environ() copied from https://github.com/rust-lang/rust/blob/1.84.0/library/std/src/sys/pal/unix/os.rs#L581-L616
 // Use `_NSGetEnviron` on Apple platforms.
@@ -65,25 +65,19 @@ pub(super) fn addr() -> Option<(usize, *const *const c_char)> {
         let envp = *environ();
         let mut environ = envp;
         // I often forget: Where did the number of elements go?
-        trace!("environ ptr: {environ:?} {:?}", *environ);
+        debug!("environ={environ:?}, point to: {:?}", *environ);
         if !environ.is_null() && !(*environ).is_null() {
             let mut element = 0;
-            trace!(
-                "frist env: element: {element}, ptr: {environ:?} {:?}",
-                *environ
-            );
+            debug!("begin: environ[{element}]={:?}, ptr={environ:?}", *environ);
             while !(*environ).is_null() {
                 trace!(
-                    "currter env: element: {element}, ptr: {environ:?} {:?}",
+                    "current: environ[{element}]={:?}, ptr={environ:?}",
                     *environ
                 );
                 environ = environ.add(1);
                 element += 1;
                 if (*environ).is_null() {
-                    trace!(
-                        "end env: element: {element}, ptr: {environ:?} {:?}",
-                        *environ
-                    );
+                    debug!("end: environ[{element}]={:?}, ptr={environ:?}", *environ);
                     environ = envp;
                     break;
                 }

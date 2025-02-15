@@ -22,10 +22,7 @@ pub unsafe fn init(argc: isize, argv: *const *const u8) {
 /// https://github.com/rust-lang/rust/commit/e97203c3f893893611818997bbeb0116ded2605f
 pub(super) fn addr() -> Result<(usize, *const *const c_char), EnvError> {
     let (argc, argv) = imp::argc_argv();
-    debug!(
-        "imp argc: {argc}, argv: {argv:?}, is null={}",
-        argv.is_null()
-    );
+    debug!("imp argc={argc}, argv={argv:?}, is null={}", argv.is_null());
 
     #[cfg(any(
         feature = "comp_argv",
@@ -87,7 +84,7 @@ fn comp_argv() -> Result<(usize, *const *const i8), EnvError> {
         let mut args = args_os();
         trace!("std args: {:#?}", &args);
         if args.len() == 0 {
-            trace!("std args is empty, try stack walking");
+            debug!("std args is empty, try stack walking...");
             #[cfg(feature = "stack_walking")]
             return Ok(from_stack_walking(envp));
 
@@ -100,15 +97,15 @@ fn comp_argv() -> Result<(usize, *const *const i8), EnvError> {
         // *argv[] = *environ[] - (argc + 1)
         unsafe {
             let comp_argv = envp.sub(std_argc + 1);
-            trace!("environ ptr: {envp:?}, argc from std: {std_argc:?}, computed argv: {comp_argv:?}, point to: {:?}", (*comp_argv));
+            trace!("environ={envp:?}, std argc={std_argc:?}, computed argv={comp_argv:?}, point to: {:?}", (*comp_argv));
             if comp_argv.is_null() || (*comp_argv).is_null() {
                 return Err(EnvError::InvalidArgvPointer);
             }
 
             let frist = args.next().ok_or(EnvError::InvalidArgvPointer)?;
-            trace!("try read comp argv[0]");
+            trace!("try read computed argv[0]");
             let argv_frist = OsStr::from_bytes(CStr::from_ptr(*comp_argv).to_bytes());
-            trace!("comp argv[0]: {argv_frist:?}, std argv[0]: {frist:?}");
+            trace!("computed argv[0]={argv_frist:?}, std argv[0]={frist:?}");
             if argv_frist == frist {
                 Ok((std_argc, comp_argv))
             } else {
@@ -119,6 +116,7 @@ fn comp_argv() -> Result<(usize, *const *const i8), EnvError> {
 }
 
 // imp::argc_argv() copied from: https://github.com/rust-lang/rust/blob/1.84.1/library/std/src/sys/pal/unix/args.rs#L96-L182
+#[rustfmt::skip]
 #[cfg(any(
     target_os = "linux",
     target_os = "android",
@@ -207,6 +205,7 @@ mod imp {
     }
 }
 
+#[rustfmt::skip]
 // Use `_NSGetArgc` and `_NSGetArgv` on Apple platforms.
 //
 // Even though these have underscores in their names, they've been available
