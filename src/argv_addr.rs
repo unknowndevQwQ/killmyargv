@@ -25,7 +25,7 @@ pub(super) fn addr() -> Result<(usize, *const *const c_char), EnvError> {
     debug!("imp argc={argc}, argv={argv:?}, is null={}", argv.is_null());
 
     #[cfg(any(
-        feature = "comp_argv",
+        feature = "compute_argv",
         feature = "stack_walking",
         feature = "force_walking"
     ))]
@@ -36,7 +36,7 @@ pub(super) fn addr() -> Result<(usize, *const *const c_char), EnvError> {
         Ok((argc as usize, argv))
     }
     #[cfg(all(
-        not(feature = "comp_argv"),
+        not(feature = "compute_argv"),
         not(feature = "stack_walking"),
         not(feature = "force_walking")
     ))]

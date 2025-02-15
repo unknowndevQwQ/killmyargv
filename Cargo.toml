@@ -25,9 +25,9 @@ linereader = "0.4.0"
 pause_console = "0.2.0"
 
 [features]
-default = ["clobber_environ", "comp_argv", "stack_walking", "replace_argv_element", "replace_environ_element"]
+default = ["clobber_environ", "compute_argv", "stack_walking", "replace_argv_element", "replace_environ_element"]
 clobber_environ = []
-comp_argv = []
+compute_argv = []
 stack_walking = []
 force_walking = [
     "stack_walking"
