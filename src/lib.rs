@@ -139,9 +139,9 @@ impl KillMyArgv {
         debug!("current target: {}", env!("TARGET"));
         let argv_mem = from_argv()?;
 
-        if let Some(env_mem) = from_env() {
-            trace!("argv struct: {argv_mem:#?}, env struct: {env_mem:#?}");
-            #[cfg(feature = "replace_argv_element")]
+        trace!("argv struct: {argv_mem:#?}");
+        #[cfg(feature = "replace_argv_element")]
+        {
             let mut new_argvp = argv_mem
                 .saved
                 .clone()
@@ -150,20 +150,25 @@ impl KillMyArgv {
                 .map(|s| s.as_ptr())
                 .collect::<Vec<*const c_char>>();
 
-            #[cfg(feature = "replace_argv_element")]
             for i in (0..argv_mem.element).rev() {
                 if let Some(new_ptr) = new_argvp.pop() {
-                    debug!("processing argv[{i}], ptr={new_ptr:?}");
+                    debug!("processing argv[{i}], try set new ptr={new_ptr:?}");
                     unsafe {
-                        let ptr = argv_mem.pointer_addr as *mut *const c_char;
-                        trace!("ptrs: {:?}, {:?}, {new_ptr:?}", *ptr.add(i), ptr.add(i));
-                        ptr.add(i).write(new_ptr);
+                        let ptr = argv_mem.pointer_addr.add(i) as *mut *const c_char;
+                        trace!(
+                            "argv[{i}]={ptr:?}, point to: {:?}, set point to: {new_ptr:?}",
+                            *ptr
+                        );
+                        ptr.write(new_ptr);
                     }
                 } else {
-                    warn!("new_argvp as none");
+                    warn!("new_argvp ptr is none");
                 }
             }
+        }
 
+        if let Some(env_mem) = from_env() {
+            trace!("env struct: {env_mem:#?}");
             #[allow(unused)]
             #[cfg(all(feature = "clobber_environ", feature = "replace_environ_element"))]
             // I haven't decided if I want to remove it or not,
@@ -191,30 +196,6 @@ impl KillMyArgv {
                 nonul_byte: Some(argv_mem.byte_len),
             })
         } else {
-            trace!("argv struct: {argv_mem:#?}");
-            #[cfg(feature = "replace_argv_element")]
-            let mut new_argvp = argv_mem
-                .saved
-                .clone()
-                .leak()
-                .iter()
-                .map(|s| s.as_ptr())
-                .collect::<Vec<*const c_char>>();
-
-            #[cfg(feature = "replace_argv_element")]
-            for i in (0..argv_mem.element).rev() {
-                if let Some(new_ptr) = new_argvp.pop() {
-                    debug!("processing argv[{i}], ptr={new_ptr:?}");
-                    unsafe {
-                        let ptr = argv_mem.pointer_addr as *mut *const c_char;
-                        ptr.add(i).write(new_ptr);
-                        trace!("ptrs: {:?}, {:?}, {new_ptr:?}", *ptr.add(i), ptr.add(i));
-                    }
-                } else {
-                    warn!("argv ptr as empty");
-                }
-            }
-
             Ok(KillMyArgv {
                 begin_addr: argv_mem.begin_addr as *mut u8,
                 end_addr: argv_mem.end_addr as *mut u8,
