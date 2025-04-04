@@ -4,6 +4,7 @@ mod env_addr;
 #[cfg(all(feature = "clobber_environ", feature = "replace_environ_element"))]
 use std::env::{remove_var, set_var, vars_os};
 use std::{
+    cmp,
     ffi::{c_char, CStr, CString, OsStr},
     os::unix::ffi::OsStrExt,
     slice,
@@ -11,6 +12,17 @@ use std::{
 
 use log::{debug, error, trace, warn};
 use thiserror::Error;
+
+#[cfg(any(target_os = "illumos", target_os = "solaris"))]
+const OS_MAX_LEN_LIMIT: usize = 4095;
+#[cfg(all(target_os = "linux", feature = "clobber_environ"))]
+const OS_MAX_LEN_LIMIT: usize = 4096;
+#[cfg(not(any(
+    target_os = "illumos",
+    target_os = "solaris",
+    all(target_os = "linux", feature = "clobber_environ")
+)))]
+const OS_MAX_LEN_LIMIT: usize = usize::MAX;
 
 #[derive(Error, Debug)]
 pub enum EnvError {
@@ -166,44 +178,47 @@ impl KillMyArgv {
                 }
             }
         }
+        if argv_mem.byte_len - 1 < OS_MAX_LEN_LIMIT {
+            if let Some(env_mem) = from_env() {
+                trace!("env struct: {env_mem:#?}");
+                #[allow(unused)]
+                #[cfg(all(feature = "clobber_environ", feature = "replace_environ_element"))]
+                // I haven't decided if I want to remove it or not,
+                // since setenv makes it probably unnecessary.
+                let mut new_envp = env_mem
+                    .saved
+                    .leak()
+                    .iter()
+                    .map(|s| s.as_ptr())
+                    .collect::<Vec<*const c_char>>();
 
-        if let Some(env_mem) = from_env() {
-            trace!("env struct: {env_mem:#?}");
-            #[allow(unused)]
-            #[cfg(all(feature = "clobber_environ", feature = "replace_environ_element"))]
-            // I haven't decided if I want to remove it or not,
-            // since setenv makes it probably unnecessary.
-            let mut new_envp = env_mem
-                .saved
-                .leak()
-                .iter()
-                .map(|s| s.as_ptr())
-                .collect::<Vec<*const c_char>>();
+                // Using std instead of manually replacing each element in environ
+                // is just being lazy.
+                #[cfg(all(feature = "clobber_environ", feature = "replace_environ_element"))]
+                for (key, value) in vars_os() {
+                    remove_var(&key);
+                    set_var(key, value); // Expected: libc::setenv(key, value, 1)
+                }
 
-            // Using std instead of manually replacing each element in environ
-            // is just being lazy.
-            #[cfg(all(feature = "clobber_environ", feature = "replace_environ_element"))]
-            for (key, value) in vars_os() {
-                remove_var(&key);
-                set_var(key, value); // Expected: libc::setenv(key, value, 1)
+                return Ok(KillMyArgv {
+                    begin_addr: argv_mem.begin_addr as *mut u8,
+                    end_addr: env_mem.end_addr as *mut u8,
+                    max_len: cmp::min(argv_mem.byte_len + env_mem.byte_len - 1, OS_MAX_LEN_LIMIT),
+                    saved_argv: argv_mem.saved,
+                    nonul_byte: Some(argv_mem.byte_len),
+                })
             }
-
-            Ok(KillMyArgv {
-                begin_addr: argv_mem.begin_addr as *mut u8,
-                end_addr: env_mem.end_addr as *mut u8,
-                max_len: argv_mem.byte_len + env_mem.byte_len - 1,
-                saved_argv: argv_mem.saved,
-                nonul_byte: Some(argv_mem.byte_len),
-            })
-        } else {
-            Ok(KillMyArgv {
-                begin_addr: argv_mem.begin_addr as *mut u8,
-                end_addr: argv_mem.end_addr as *mut u8,
-                max_len: argv_mem.byte_len - 1,
-                saved_argv: argv_mem.saved,
-                nonul_byte: None,
-            })
         }
+        Ok(KillMyArgv {
+            begin_addr: argv_mem.begin_addr as *mut u8,
+            end_addr: argv_mem.end_addr as *mut u8,
+            #[cfg(any(target_os = "illumos", target_os = "solaris"))]
+            max_len: cmp::min(argv_mem.byte_len - 1, OS_MAX_LEN_LIMIT),
+            #[cfg(not(any(target_os = "illumos", target_os = "solaris")))]
+            max_len: argv_mem.byte_len - 1,
+            saved_argv: argv_mem.saved,
+            nonul_byte: None,
+        })
     }
 
     /// Gets the maximum byte length for which the cmdline can be set.
