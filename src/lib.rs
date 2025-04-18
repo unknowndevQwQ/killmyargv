@@ -13,16 +13,13 @@ use std::{
 use log::{debug, error, trace, warn};
 use thiserror::Error;
 
-#[cfg(any(target_os = "illumos", target_os = "solaris"))]
-const OS_MAX_LEN_LIMIT: usize = 4095;
-#[cfg(all(target_os = "linux", feature = "clobber_environ"))]
-const OS_MAX_LEN_LIMIT: usize = 4096;
-#[cfg(not(any(
-    target_os = "illumos",
-    target_os = "solaris",
-    all(target_os = "linux", feature = "clobber_environ")
-)))]
-const OS_MAX_LEN_LIMIT: usize = usize::MAX;
+const OS_MAX_LEN_LIMIT: usize = if cfg!(any(target_os = "illumos", target_os = "solaris")) {
+    4095
+} else if cfg!(all(target_os = "linux", feature = "clobber_environ")) {
+    4096
+} else {
+    usize::MAX
+};
 
 #[derive(Error, Debug)]
 pub enum EnvError {
@@ -152,8 +149,7 @@ impl KillMyArgv {
         let argv_mem = from_argv()?;
 
         trace!("argv struct: {argv_mem:#?}");
-        #[cfg(feature = "replace_argv_element")]
-        {
+        if cfg!(feature = "replace_argv_element") {
             let mut new_argvp = argv_mem
                 .saved
                 .clone()
@@ -212,10 +208,11 @@ impl KillMyArgv {
         Ok(KillMyArgv {
             begin_addr: argv_mem.begin_addr as *mut u8,
             end_addr: argv_mem.end_addr as *mut u8,
-            #[cfg(any(target_os = "illumos", target_os = "solaris"))]
-            max_len: cmp::min(argv_mem.byte_len - 1, OS_MAX_LEN_LIMIT),
-            #[cfg(not(any(target_os = "illumos", target_os = "solaris")))]
-            max_len: argv_mem.byte_len - 1,
+            max_len: if cfg!(any(target_os = "illumos", target_os = "solaris")) {
+                cmp::min(argv_mem.byte_len - 1, OS_MAX_LEN_LIMIT)
+            } else {
+                argv_mem.byte_len - 1
+            },
             saved_argv: argv_mem.saved,
             nonul_byte: None,
         })

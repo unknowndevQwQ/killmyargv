@@ -24,26 +24,23 @@ pub(super) fn addr() -> Result<(usize, *const *const c_char), EnvError> {
     let (argc, argv) = imp::argc_argv();
     debug!("imp argc={argc}, argv={argv:?}, is null={}", argv.is_null());
 
-    #[cfg(any(
+    if cfg!(any(
         feature = "compute_argv",
         feature = "stack_walking",
         feature = "force_walking"
-    ))]
-    if argv.is_null() || (unsafe { *argv }).is_null() {
-        debug!("failed from imp get argv, try compute/stackwalking");
-        comp_argv()
+    )) {
+        if argv.is_null() || (unsafe { *argv }).is_null() {
+            debug!("failed from imp get argv, try compute/stackwalking");
+            comp_argv()
+        } else {
+            Ok((argc as usize, argv))
+        }
     } else {
-        Ok((argc as usize, argv))
-    }
-    #[cfg(all(
-        not(feature = "compute_argv"),
-        not(feature = "stack_walking"),
-        not(feature = "force_walking")
-    ))]
-    if argv.is_null() || (unsafe { *argv }).is_null() {
-        Err(EnvError::InvalidArgvPointer)
-    } else {
-        Ok((argc as usize, argv))
+        if argv.is_null() || (unsafe { *argv }).is_null() {
+            Err(EnvError::InvalidArgvPointer)
+        } else {
+            Ok((argc as usize, argv))
+        }
     }
 }
 
@@ -68,14 +65,10 @@ fn from_stack_walking(environ: *const *const c_char) -> (usize, *const *const c_
 fn comp_argv() -> Result<(usize, *const *const i8), EnvError> {
     let envp = unsafe { envptr().ok_or(EnvError::FailedToGetArgvPointer) }?;
 
-    #[cfg(feature = "force_walking")]
-    {
+    if cfg!(feature = "force_walking") {
         debug!("forge walking...");
         return Ok(from_stack_walking(envp));
-    }
-
-    #[cfg(not(feature = "force_walking"))]
-    {
+    } else {
         use std::{
             env::args_os,
             ffi::{CStr, OsStr},
@@ -85,11 +78,11 @@ fn comp_argv() -> Result<(usize, *const *const i8), EnvError> {
         trace!("std args: {:#?}", &args);
         if args.len() == 0 {
             debug!("std args is empty, try stack walking...");
-            #[cfg(feature = "stack_walking")]
-            return Ok(from_stack_walking(envp));
-
-            #[cfg(not(feature = "stack_walking"))]
-            return Err(EnvError::FailedToGetArgvPointer);
+            if cfg!(feature = "stack_walking") {
+                return Ok(from_stack_walking(envp));
+            } else {
+                return Err(EnvError::FailedToGetArgvPointer);
+            }
         }
 
         let std_argc = args.len();
