@@ -202,7 +202,7 @@ impl KillMyArgv {
                     max_len: cmp::min(argv_mem.byte_len + env_mem.byte_len - 1, OS_MAX_LEN_LIMIT),
                     saved_argv: argv_mem.saved,
                     nonul_byte: Some(argv_mem.byte_len),
-                })
+                });
             }
         }
         Ok(KillMyArgv {
