@@ -138,6 +138,20 @@ pub fn argv_addrs() -> Result<(*mut u8, *mut u8), EnvError> {
     from_argv().map(|m| (m.begin_addr as *mut u8, m.end_addr as *mut u8))
 }
 
+/// Get raw args count and args pointer
+/// # Safety
+/// The string address is changed after KillMyArgv::new() with the replace_argv_element feature enabled.
+pub unsafe fn argc_argv() -> Result<(usize, *const *const c_char), EnvError> {
+    argv_addr::addr()
+}
+
+/// Get raw environ pointer
+/// # Safety
+/// See: <https://doc.rust-lang.org/stable/std/env/fn.set_var.html#safety>
+pub unsafe fn environ() -> Option<*const *const c_char> {
+    env_addr::envptr()
+}
+
 impl KillMyArgv {
     /// Get the argv start address and end address.
     pub fn argv_addrs(&self) -> (*mut u8, *mut u8) {
