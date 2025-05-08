@@ -24,23 +24,19 @@ pub(super) fn addr() -> Result<(usize, *const *const c_char), EnvError> {
     let (argc, argv) = imp::argc_argv();
     debug!("imp argc={argc}, argv={argv:?}, is null={}", argv.is_null());
 
-    if cfg!(any(
-        feature = "compute_argv",
-        feature = "stack_walking",
-        feature = "force_walking"
-    )) {
-        if argv.is_null() || (unsafe { *argv }).is_null() {
+    if argv.is_null() || (unsafe { *argv }).is_null() {
+        if cfg!(any(
+            feature = "compute_argv",
+            feature = "stack_walking",
+            feature = "force_walking"
+        )) {
             debug!("failed from imp get argv, try compute/stackwalking");
             comp_argv()
         } else {
-            Ok((argc as usize, argv))
+            Err(EnvError::InvalidArgvPointer)
         }
     } else {
-        if argv.is_null() || (unsafe { *argv }).is_null() {
-            Err(EnvError::InvalidArgvPointer)
-        } else {
-            Ok((argc as usize, argv))
-        }
+        Ok((argc as usize, argv))
     }
 }
 
