@@ -48,70 +48,96 @@ pub struct KillMyArgv {
 struct MemInfo {
     begin_addr: *const c_char,
     end_addr: *const c_char,
-    byte_len: usize,
     #[allow(unused)]
-    // argv[element] or environ[element]
-    element: usize,
-    saved: Vec<CString>,
+    // argv[count] or environ[count]
+    count: usize,
     #[allow(unused)]
-    pointer_addr: *const *const c_char,
+    ptr: *const *const c_char,
 }
 
 unsafe fn from_addr(count: usize, ptr: *const *const c_char) -> Result<MemInfo, EnvError> {
     if ptr.is_null() {
         return Err(EnvError::NullPointer);
-    } else if (*ptr).is_null() {
+    } else if ptr.read().is_null() {
         return Err(EnvError::PonitToNull { ptr });
     }
 
-    let mut byte_len = 0;
-    let mut end_addr = *ptr;
-    let mut saved: Vec<CString> = Vec::with_capacity(count);
-    let cstr_ptrs = slice::from_raw_parts(ptr, count);
-    let cstr_ptrs_len = cstr_ptrs.len();
-    if cstr_ptrs_len != count {
-        warn!(
-            "The actual length of the array ({cstr_ptrs_len}) does not match the argument ({count})."
-        );
+    let mut available = 0;
+
+    //copied from: https://github.com/rust-lang/rust/blob/1.86.0/library/std/src/sys/pal/unix/args.rs#L23-L50
+    for i in 0..count {
+        // SAFETY: `argv` is non-null if `argc` is positive, and it is
+        // guaranteed to be at least as long as `argc`, so reading from it
+        // should be safe.
+        let in_ptr = unsafe { ptr.add(i).read() };
+
+        // Some C commandline parsers (e.g. GLib and Qt) are replacing already
+        // handled arguments in `argv` with `NULL` and move them to the end.
+        //
+        // Since they can't directly ensure updates to `argc` as well, this
+        // means that `argc` might be bigger than the actual number of
+        // non-`NULL` pointers in `argv` at this point.
+        //
+        // To handle this we simply stop iterating at the first `NULL`
+        // argument. `argv` is also guaranteed to be `NULL`-terminated so any
+        // non-`NULL` arguments after the first `NULL` can safely be ignored.
+        if in_ptr.is_null() {
+            // NOTE: On Apple platforms, `-[NSProcessInfo arguments]` does not
+            // stop iterating here, but instead `continue`, always iterating
+            // up until it reached `argc`.
+            //
+            // This difference will only matter in very specific circumstances
+            // where `argc`/`argv` have been modified, but in unexpected ways,
+            // so it likely doesn't really matter which option we choose.
+            // See the following PR for further discussion:
+            // <https://github.com/rust-lang/rust/pull/125225>
+            break;
+        }
+
+        // SAFETY: Just checked that the pointer is not NULL, and arguments
+        // are otherwise guaranteed to be valid C strings.
+        trace!("given count={count}, available count={available}, ptr={ptr:?}, current={in_ptr:?}");
+        available = i;
     }
+
+    let begin_addr = unsafe { ptr.read() };
+    let mut end_addr = unsafe { ptr.add(available).read() };
+    end_addr = unsafe { end_addr.add(CStr::from_ptr(end_addr).to_bytes().len()) };
+
+    debug!("given count={count}, available count={available}, ptr={ptr:?}, range: {begin_addr:?} -> {end_addr:?}");
+    if count > 0 {
+        Ok(MemInfo {
+            begin_addr,
+            end_addr,
+            count: available + 1,
+            ptr,
+        })
+    } else {
+        Err(EnvError::FailedToGetString { ptr })
+    }
+}
+
+// The expected input is always the checked output of from_addr()
+fn save_string(count: usize, ptr: *const *const c_char) -> Vec<CString> {
+    let mut saved: Vec<CString> = Vec::with_capacity(count);
+    let cstr_ptrs = unsafe { slice::from_raw_parts(ptr, count) };
     for (i, cstr_ptr) in cstr_ptrs.into_iter().enumerate() {
         trace!("string[{i}]={cstr_ptr:?}, ptr={:?}", cstr_ptr as *const _);
         if cstr_ptr.is_null() {
             warn!("the string[{i}] is null, pls check");
             break;
         }
-        let cstr_len = CStr::from_ptr(*cstr_ptr).to_bytes_with_nul().len();
-        saved.push(CStr::from_ptr(*cstr_ptr).into());
+        let cstr_len = unsafe { CStr::from_ptr(*cstr_ptr) }
+            .to_bytes_with_nul()
+            .len();
+        saved.push(unsafe { CStr::from_ptr(*cstr_ptr) }.into());
         // Decide elsewhere whether to exclude nul.
-        byte_len += cstr_len;
-
         trace!(
-            "collect: string[{i}] recorded len={byte_len}, range(with null): {cstr_ptr:?} -> {:?}, len={cstr_len}",
-            cstr_ptr.add(cstr_len - 1)
+            "collect: string[{i}] range(with null): {cstr_ptr:?} -> {:?}, len={cstr_len}",
+            unsafe { cstr_ptr.add(cstr_len - 1) }
         );
-        if i == count - 1 {
-            // Perhaps it would be better to add 1 byte manually when
-            // calculating the length.
-            // Avoid overstepping the bounds.
-            end_addr = cstr_ptr.add(cstr_len - 1);
-        }
     }
-    debug!(
-        "collect count={count}, ptr={ptr:?}, range: {:?} -> {end_addr:?}, len={byte_len}, vec_cap={}",
-        *ptr, saved.capacity()
-    );
-    if byte_len != 0 {
-        Ok(MemInfo {
-            begin_addr: *ptr,
-            end_addr,
-            byte_len,
-            element: count,
-            saved,
-            pointer_addr: ptr,
-        })
-    } else {
-        Err(EnvError::FailedToGetString { ptr })
-    }
+    saved
 }
 
 // Get environ address, ignore errors
@@ -161,22 +187,24 @@ impl KillMyArgv {
     pub fn new() -> Result<KillMyArgv, EnvError> {
         debug!("current target: {}", env!("TARGET"));
         let argv_mem = from_argv()?;
+        let argv_saved = save_string(argv_mem.count, argv_mem.ptr);
+        // It can be replaced by std::ptr::sub_ptr() in the future.
+        let argv_len = unsafe { argv_mem.end_addr.offset_from(argv_mem.begin_addr) as usize };
 
-        trace!("argv struct: {argv_mem:#?}");
+        trace!("argv struct: {argv_mem:#?}, saved: {argv_saved:#?}, len={argv_len}");
         if cfg!(feature = "replace_argv_element") {
-            let mut new_argvp = argv_mem
-                .saved
+            let mut new_argvp = argv_saved
                 .clone()
                 .leak()
                 .iter()
                 .map(|s| s.as_ptr())
                 .collect::<Vec<*const c_char>>();
 
-            for i in (0..argv_mem.element).rev() {
+            for i in (0..argv_mem.count).rev() {
                 if let Some(new_ptr) = new_argvp.pop() {
                     debug!("processing argv[{i}], try set new ptr={new_ptr:?}");
                     unsafe {
-                        let ptr = argv_mem.pointer_addr.add(i) as *mut *const c_char;
+                        let ptr = argv_mem.ptr.add(i) as *mut *const c_char;
                         trace!(
                             "argv[{i}]={ptr:?}, point to: {:?}, set point to: {new_ptr:?}",
                             *ptr
@@ -188,16 +216,16 @@ impl KillMyArgv {
                 }
             }
         }
-        if argv_mem.byte_len - 1 < OS_MAX_LEN_LIMIT {
+        if argv_len - 1 < OS_MAX_LEN_LIMIT {
             if let Some(env_mem) = from_env() {
-                trace!("env struct: {env_mem:#?}");
+                let env_saved = save_string(env_mem.count, env_mem.ptr);
+                let env_len = unsafe { env_mem.end_addr.offset_from(env_mem.begin_addr) as usize };
+                trace!("env struct: {env_mem:#?}, saved: {env_saved:#?}, len={env_len}");
                 #[allow(unused)]
                 #[cfg(all(feature = "clobber_environ", feature = "replace_environ_element"))]
                 // I haven't decided if I want to remove it or not,
                 // since setenv makes it probably unnecessary.
-                let mut new_envp = env_mem
-                    .saved
-                    .leak()
+                let mut new_envp = env_saved
                     .iter()
                     .map(|s| s.as_ptr())
                     .collect::<Vec<*const c_char>>();
@@ -213,9 +241,9 @@ impl KillMyArgv {
                 return Ok(KillMyArgv {
                     begin_addr: argv_mem.begin_addr as *mut u8,
                     end_addr: env_mem.end_addr as *mut u8,
-                    max_len: cmp::min(argv_mem.byte_len + env_mem.byte_len - 1, OS_MAX_LEN_LIMIT),
-                    saved_argv: argv_mem.saved,
-                    nonul_byte: Some(argv_mem.byte_len),
+                    max_len: cmp::min(argv_len + 1 + env_len, OS_MAX_LEN_LIMIT),
+                    saved_argv: argv_saved,
+                    nonul_byte: Some(argv_len),
                 });
             }
         }
@@ -223,11 +251,11 @@ impl KillMyArgv {
             begin_addr: argv_mem.begin_addr as *mut u8,
             end_addr: argv_mem.end_addr as *mut u8,
             max_len: if cfg!(any(target_os = "illumos", target_os = "solaris")) {
-                cmp::min(argv_mem.byte_len - 1, OS_MAX_LEN_LIMIT)
+                cmp::min(argv_len, OS_MAX_LEN_LIMIT)
             } else {
-                argv_mem.byte_len - 1
+                argv_len
             },
-            saved_argv: argv_mem.saved,
+            saved_argv: argv_saved,
             nonul_byte: None,
         })
     }
