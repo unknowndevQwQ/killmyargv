@@ -32,7 +32,7 @@ fn main() {
             let (b, e) = v;
             warn!("frist get argv start={b:?} end={e:?}");
         }
-        Err(e) => error!("reget addrs err: {e}"),
+        Err(e) => error!("frist get addrs err: {e}"),
     }
 
     let mem = KillMyArgv::new().expect("try init fail");
