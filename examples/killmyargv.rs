@@ -27,6 +27,14 @@ fn main() {
     warn!("I'm here!!!");
     info!("argc from std: {}", args().len());
 
+    match argv_addrs() {
+        Ok(v) => {
+            let (b, e) = v;
+            warn!("frist get argv start={b:?} end={e:?}");
+        }
+        Err(e) => error!("reget addrs err: {e}"),
+    }
+
     let mem = KillMyArgv::new().expect("try init fail");
     fn printenv() {
         if false {
@@ -45,10 +53,7 @@ fn main() {
     printenv();
     pause!();
 
-    warn!(
-        "Getting the address via argv_addrs() after initialization is not supported, {}",
-        "the behavior is shown here."
-    );
+    warn!("Now you can get the correct address via argv_addrs() after initialization");
     match argv_addrs() {
         Ok(v) => {
             let (b, e) = v;

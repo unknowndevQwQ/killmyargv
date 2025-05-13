@@ -8,6 +8,7 @@ use std::{
     ffi::{c_char, CStr, CString, OsStr},
     os::unix::ffi::OsStrExt,
     slice,
+    sync::{Mutex, OnceLock},
 };
 
 use log::{debug, error, trace, warn};
@@ -20,6 +21,8 @@ const OS_MAX_LEN_LIMIT: usize = if cfg!(any(target_os = "illumos", target_os = "
 } else {
     usize::MAX
 };
+
+static ARGV_MEM: OnceLock<Mutex<MemInfo>> = OnceLock::new();
 
 #[derive(Error, Debug)]
 pub enum EnvError {
@@ -35,6 +38,8 @@ pub enum EnvError {
     NullPointer,
 }
 
+unsafe impl Send for EnvError {}
+
 #[derive(Debug)]
 pub struct KillMyArgv {
     begin_addr: *mut u8,
@@ -44,7 +49,7 @@ pub struct KillMyArgv {
     nonul_byte: Option<usize>,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Copy, Debug)]
 struct MemInfo {
     begin_addr: *const c_char,
     end_addr: *const c_char,
@@ -54,6 +59,8 @@ struct MemInfo {
     #[allow(unused)]
     ptr: *const *const c_char,
 }
+
+unsafe impl Send for MemInfo {}
 
 unsafe fn from_addr(count: usize, ptr: *const *const c_char) -> Result<MemInfo, EnvError> {
     if ptr.is_null() {
@@ -152,11 +159,18 @@ fn from_env() -> Option<MemInfo> {
 }
 
 fn from_argv() -> Result<MemInfo, EnvError> {
-    let (count, ptr) = argv_addr::addr()?;
-    unsafe { from_addr(count, ptr) }.map_err(|e| {
-        trace!("argv err: {e:?}");
-        e
-    })
+    let argv_info = match ARGV_MEM.get() {
+        None => {
+            let (count, ptr) = argv_addr::addr()?;
+            let argv_info = unsafe { from_addr(count, ptr) }.map_err(|e| {
+                trace!("argv err: {e:?}");
+                e
+            })?;
+            ARGV_MEM.get_or_init(|| Mutex::new(argv_info))
+        }
+        Some(val) => val,
+    };
+    Ok(*argv_info.lock().unwrap())
 }
 
 /// Get the argv start address and end address.
