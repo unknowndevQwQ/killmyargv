@@ -257,7 +257,7 @@ impl KillMyArgv {
                     end_addr: env_mem.end_addr as *mut u8,
                     max_len: cmp::min(argv_len + 1 + env_len, OS_MAX_LEN_LIMIT),
                     saved_argv: argv_saved,
-                    nonul_byte: Some(argv_len),
+                    nonul_byte: Some(argv_len + 1),
                 });
             }
         }
