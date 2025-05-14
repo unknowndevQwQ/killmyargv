@@ -159,18 +159,19 @@ fn from_env() -> Option<MemInfo> {
 }
 
 fn from_argv() -> Result<MemInfo, EnvError> {
-    let argv_info = match ARGV_MEM.get() {
-        None => {
-            let (count, ptr) = argv_addr::addr()?;
-            let argv_info = unsafe { from_addr(count, ptr) }.map_err(|e| {
-                trace!("argv err: {e:?}");
-                e
-            })?;
-            ARGV_MEM.get_or_init(|| Mutex::new(argv_info))
-        }
-        Some(val) => val,
-    };
-    Ok(*argv_info.lock().unwrap())
+    if let Some(argv_info) = ARGV_MEM.get() {
+        Ok(*argv_info.lock().unwrap())
+    } else {
+        let (count, ptr) = argv_addr::addr()?;
+        let argv_info = unsafe { from_addr(count, ptr) }.map_err(|e| {
+            trace!("argv err: {e:?}");
+            e
+        })?;
+        ARGV_MEM
+            .set(Mutex::new(argv_info))
+            .expect("Unexpected initialization"); // Expected: never expect
+        Ok(argv_info)
+    }
 }
 
 /// Get the argv start address and end address.
