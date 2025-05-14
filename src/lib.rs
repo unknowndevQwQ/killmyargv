@@ -103,20 +103,20 @@ unsafe fn from_addr(count: usize, ptr: *const *const c_char) -> Result<MemInfo, 
 
         // SAFETY: Just checked that the pointer is not NULL, and arguments
         // are otherwise guaranteed to be valid C strings.
-        trace!("given count={count}, available count={available}, ptr={ptr:?}, current={in_ptr:?}");
-        available = i;
+        available = i + 1;
+        trace!("given count={count}, current count={available}, ptr={ptr:?}, current={in_ptr:?}");
     }
 
     let begin_addr = unsafe { ptr.read() };
-    let mut end_addr = unsafe { ptr.add(available).read() };
+    let mut end_addr = unsafe { ptr.add(available - 1).read() };
     end_addr = unsafe { end_addr.add(CStr::from_ptr(end_addr).to_bytes().len()) };
 
     debug!("given count={count}, available count={available}, ptr={ptr:?}, range: {begin_addr:?} -> {end_addr:?}");
-    if count > 0 {
+    if available > 0 {
         Ok(MemInfo {
             begin_addr,
             end_addr,
-            count: available + 1,
+            count: available,
             ptr,
         })
     } else {
@@ -231,7 +231,7 @@ impl KillMyArgv {
                 }
             }
         }
-        if argv_len - 1 < OS_MAX_LEN_LIMIT {
+        if argv_len < OS_MAX_LEN_LIMIT {
             if let Some(env_mem) = from_env() {
                 let env_saved = save_string(env_mem.count, env_mem.ptr);
                 let env_len = unsafe { env_mem.end_addr.offset_from(env_mem.begin_addr) as usize };
