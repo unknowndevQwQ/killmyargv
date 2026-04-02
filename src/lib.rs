@@ -1,3 +1,10 @@
+//! Do something argv-unsafe
+//! 
+//! In the absence of a syscall that can change the output of `ps -o args`,
+//! try to set custom `ps -o args` output by changing argv.
+//! 
+//! see more details in the README.md
+
 mod argv_addr;
 mod env_addr;
 
@@ -40,6 +47,8 @@ pub enum EnvError {
 
 unsafe impl Send for EnvError {}
 
+/// Make changes to argv.
+/// Some systems do not reflect the changes in `ps -o args` output.
 #[derive(Debug)]
 pub struct KillMyArgv {
     begin_addr: *mut u8,
@@ -174,14 +183,19 @@ fn from_argv() -> Result<MemInfo, EnvError> {
     }
 }
 
-/// Get the argv start address and end address.
+/// Get the argument strings start address and without end NUL character end address.
 pub fn argv_addrs() -> Result<(*mut u8, *mut u8), EnvError> {
     from_argv().map(|m| (m.begin_addr as *mut u8, m.end_addr as *mut u8))
 }
 
-/// Get raw args count and args pointer
+/// Get raw argument count and argument vector pointer
 /// # Safety
 /// The string address is changed after KillMyArgv::new() with the replace_argv_element feature enabled.
+/// 
+/// If the argv address cannot be obtained through os libc(currently only target
+/// $arch-unknown-linux-gnu or $arch-apple-* can obtain the argv address through libc),
+/// all behaviors that change the environment variable pointer will cause the
+/// argv address calculated through the environ address to be wrong.
 pub unsafe fn argc_argv() -> Result<(usize, *const *const c_char), EnvError> {
     argv_addr::addr()
 }
@@ -194,7 +208,7 @@ pub unsafe fn environ() -> Option<*const *const c_char> {
 }
 
 impl KillMyArgv {
-    /// Get the argv start address and end address.
+    /// Get the argument strings start address and without end NUL character end address.
     pub fn argv_addrs(&self) -> (*mut u8, *mut u8) {
         (self.begin_addr, self.end_addr)
     }
@@ -275,18 +289,18 @@ impl KillMyArgv {
         })
     }
 
-    /// Gets the maximum byte length for which the cmdline can be set.
+    /// Get the maximum writable length in bytes of args.
     pub fn max_len(&self) -> usize {
         self.max_len
     }
 
-    /// origin argv length, containing the terminating NUL byte.
-    /// This bit is written to a non-nul value requiring attention to os behavior.
+    /// The length of origin argv including the terminating NUL character.
+    /// Be aware of operating system behavior if this bit is written with a non-NUL byte.
     pub fn nonul_byte(&self) -> Option<usize> {
         self.nonul_byte
     }
 
-    /// Undo the args/cmdline changes.
+    /// Undo the args changes.
     pub fn revert(&self) {
         let backup_chars: Vec<u8> = self
             .saved_argv
@@ -297,7 +311,9 @@ impl KillMyArgv {
         Self::set(self, &backup_chars)
     }
 
-    /// set a new args/cmdline.
+    /// Set new args.
+    /// 
+    /// If the length of chars is higher than the maximum writable length, it will be truncated to the maximum writable length.
     pub fn set(&self, chars: &[u8]) {
         trace!(
             "set len: {:?}, need not null byte: {:?}, String: {:?}, bytes hex: {chars:02x?}",
