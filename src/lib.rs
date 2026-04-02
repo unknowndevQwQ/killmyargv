@@ -294,6 +294,13 @@ impl KillMyArgv {
         self.max_len
     }
 
+    /// Get the original argument count.
+    /// The maximum number of null bytes that can be added to the args you want to modify can perhaps be referenced by its limit.
+    /// The behavior of adding null bytes when modifying args is defined by the OS.
+    pub fn orig_argc(&self) -> usize {
+        self.saved_argv.len()
+    }
+
     /// The length of origin argv including the terminating NUL character.
     /// Be aware of operating system behavior if this bit is written with a non-NUL byte.
     pub fn nonul_byte(&self) -> Option<usize> {
