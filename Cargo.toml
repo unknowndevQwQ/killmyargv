@@ -14,11 +14,11 @@ repository = "https://github.com/unknowndevQwQ/killmyargv"
 [dependencies]
 libc = "0.2.169"
 log = "0.4.25"
-thiserror = "2.0.11"
+thiserror = "2.0.18"
 
 [dev-dependencies]
 sysinfo = { version = "0.38.4", features = ["system"] }
-spdlog-rs = { version = "0.4.1", features = ["log"] }
+spdlog-rs = { version = "0.5.3", features = ["log"] }
 test-binary = "3.0.2"
 base64 = "0.22.1"
 linereader = "0.4.0"
