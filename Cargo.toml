@@ -17,7 +17,7 @@ log = "0.4.25"
 thiserror = "2.0.11"
 
 [dev-dependencies]
-sysinfo = { version = "0.30.13", default-features = false }
+sysinfo = { version = "0.38.4", features = ["system"] }
 spdlog-rs = { version = "0.4.1", features = ["log"] }
 test-binary = "3.0.2"
 base64 = "0.22.1"

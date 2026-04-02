@@ -1,7 +1,7 @@
 use base64::alphabet::STANDARD;
 use base64::engine::GeneralPurpose;
 use base64::Engine;
-use sysinfo::{Pid, ProcessRefreshKind};
+use sysinfo::{Pid, ProcessRefreshKind, ProcessesToUpdate};
 use test_binary::build_test_binary;
 
 pub fn get_set_cmdline_path() -> Result<OsString> {
@@ -34,7 +34,6 @@ pub fn set_cmdline_with_child(
     let mut child_stdout = linereader::LineReader::new(child_stdout);
     let pid = Pid::from_u32(child_pid);
     let engine = GeneralPurpose::new(&STANDARD, Default::default());
-    let mut system = sysinfo::System::new();
 
     for (case_str, results) in inputs.into_iter().zip(results) {
         let case_base64 = engine
@@ -49,17 +48,20 @@ pub fn set_cmdline_with_child(
         if let Some(line) = child_stdout.next_line() {
             line?;
         }
-
-        assert!(system.refresh_process_specifics(
-            pid,
-            ProcessRefreshKind::new().with_cmd(sysinfo::UpdateKind::Always)
-        ));
+        let mut system = sysinfo::System::new(); // llm: avoid caching the process info
+        assert!(
+            system.refresh_processes_specifics(
+                ProcessesToUpdate::Some(&[pid]),
+                true,
+                ProcessRefreshKind::everything().without_tasks()
+            ) > 0
+        );
         let set_cmdline_process = system.process(pid).expect("set-cmdline exits unexpectedly");
         let actual_cmdline = set_cmdline_process.cmd();
         let expected_cmdline = results
             .into_iter()
-            .map(|s| s.as_ref().to_owned())
-            .collect::<Vec<String>>();
+            .map(|s| s.as_ref().to_owned().into())
+            .collect::<Vec<OsString>>();
         assert_eq!(actual_cmdline, &expected_cmdline);
     }
     Ok(())
