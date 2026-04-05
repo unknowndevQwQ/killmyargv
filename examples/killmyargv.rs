@@ -1,4 +1,4 @@
-use killmyargv::{argv_addrs, KillMyArgv};
+use killmyargv::{argv_addrs, direct_argc_argv, KillMyArgv};
 
 use std::env::{args, set_var, vars_os};
 use std::sync::Arc;
@@ -47,6 +47,9 @@ fn main() {
         }
     }
     pause!();
+
+    let (d_argc, d_argv) = unsafe { direct_argc_argv() };
+    info!("direct argc: {}, argv: {:?}", d_argc, d_argv);
 
     mem.set("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee????\n".as_bytes());
     info!("set gr argv");

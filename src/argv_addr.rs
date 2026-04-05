@@ -40,6 +40,10 @@ pub(super) fn addr() -> Result<(usize, *const *const c_char), EnvError> {
     }
 }
 
+pub(super) unsafe fn direct_argc_argv() -> (isize, *const *const c_char) {
+    imp::argc_argv()
+}
+
 // from: https://github.com/leo60228/libargs/blob/master/src/lib.rs#L16-L30
 // or `fn from_backtrace(...) -> (...)`?
 fn from_stack_walking(environ: *const *const c_char) -> (usize, *const *const c_char) {

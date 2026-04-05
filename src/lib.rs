@@ -1,8 +1,8 @@
 //! Do something argv-unsafe
-//! 
+//!
 //! In the absence of a syscall that can change the output of `ps -o args`,
 //! try to set custom `ps -o args` output by changing argv.
-//! 
+//!
 //! see more details in the README.md
 
 mod argv_addr;
@@ -191,7 +191,7 @@ pub fn argv_addrs() -> Result<(*mut u8, *mut u8), EnvError> {
 /// Get raw argument count and argument vector pointer
 /// # Safety
 /// The string address is changed after KillMyArgv::new() with the replace_argv_element feature enabled.
-/// 
+///
 /// If the argv address cannot be obtained through os libc(currently only target
 /// $arch-unknown-linux-gnu or $arch-apple-* can obtain the argv address through libc),
 /// all behaviors that change the environment variable pointer will cause the
@@ -205,6 +205,27 @@ pub unsafe fn argc_argv() -> Result<(usize, *const *const c_char), EnvError> {
 /// See: <https://doc.rust-lang.org/stable/std/env/fn.set_var.html#safety>
 pub unsafe fn environ() -> Option<*const *const c_char> {
     env_addr::envptr()
+}
+
+/// Get raw argument count and argument vector pointer without any check.
+///
+/// Similar to the Rust standard library,
+/// but only works on platforms where libc provides argc and argv ($arch-unknown-linux-gnu or $arch-apple-*).  
+/// Other platforms will return 0 and a null pointer. This function is exposed for research purposes.
+/// # Safety
+/// The safety requirements are identical to those of functions without the "direct" prefix.
+pub unsafe fn direct_argc_argv() -> (isize, *const *const c_char) {
+    argv_addr::direct_argc_argv()
+}
+
+/// Get raw environ pointer without any check.
+///
+/// Similar to the Rust standard library.
+/// This function is exposed for research purposes.
+/// # Safety
+/// The safety requirements are identical to those of functions without the "direct" prefix.
+pub unsafe fn direct_environ() -> *mut *const *const c_char {
+    env_addr::environ()
 }
 
 impl KillMyArgv {
@@ -319,7 +340,7 @@ impl KillMyArgv {
     }
 
     /// Set new args.
-    /// 
+    ///
     /// If the length of chars is higher than the maximum writable length, it will be truncated to the maximum writable length.
     pub fn set(&self, chars: &[u8]) {
         trace!(
