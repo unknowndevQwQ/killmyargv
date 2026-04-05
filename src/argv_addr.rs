@@ -30,8 +30,40 @@ pub(super) fn addr() -> Result<(usize, *const *const c_char), EnvError> {
             feature = "stack_walking",
             feature = "force_walking"
         )) {
-            debug!("failed from imp get argv, try compute/stackwalking");
-            comp_argv()
+            debug!("failed from imp get argv, try compute/stack walking");
+            let envp = unsafe { envptr().ok_or(EnvError::FailedToGetArgvPointer) }?;
+
+            if cfg!(feature = "force_walking") {
+                debug!("forge walking...");
+                Ok(from_stack_walking(envp))
+            } else {
+                use std::env::args_os;
+                use std::os::unix::ffi::OsStrExt;
+
+                let mut args = args_os();
+                let args_len = args.len();
+                trace!("std args len={}, struct is: {:#?}, ", args_len, &args);
+                if args_len == 0 {
+                    if cfg!(feature = "stack_walking") {
+                        debug!("std args is empty, try stack walking...");
+                        return Ok(from_stack_walking(envp));
+                    } else {
+                        return Err(EnvError::FailedToGetArgvPointer);
+                    }
+                }
+
+                let frist_arg = args.next().ok_or(EnvError::InvalidArgvPointer)?;
+                comp_argv(args_len, frist_arg.as_bytes(), envp).or_else(|e| {
+                    if cfg!(feature = "stack_walking") {
+                        debug!("failed to compute argv.");
+                        debug!("llm suggests try stack walking, but I think that's nonsense, unless there's an error in the calculation.");
+                        debug!("well try it...");
+                        Ok(from_stack_walking(envp))
+                    } else {
+                        Err(e)
+                    }
+                })
+            }
         } else {
             Err(EnvError::InvalidArgvPointer)
         }
@@ -42,6 +74,40 @@ pub(super) fn addr() -> Result<(usize, *const *const c_char), EnvError> {
 
 pub(super) unsafe fn direct_argc_argv() -> (isize, *const *const c_char) {
     imp::argc_argv()
+}
+
+// It is expected that argc, argv, and environ are in contiguous memory,
+// which is also what from_backtrace(...) expects.
+// *environ[] == *argv[] + argc + 1, aka
+// *argv[] = *environ[] - (argc + 1)
+fn comp_argv(
+    argc: usize,
+    given_first_arg: &[u8],
+    environ: *const *const c_char,
+) -> Result<(usize, *const *const c_char), EnvError> {
+    unsafe {
+        use std::ffi::{CStr, OsStr};
+        use std::os::unix::ffi::OsStrExt;
+
+        let comp_argv = environ.sub(argc + 1);
+        trace!(
+            "environ={environ:?}, given argc={argc:?}, computed argv={comp_argv:?}, point to: {:?}",
+            (*comp_argv)
+        );
+        if comp_argv.is_null() || (*comp_argv).is_null() {
+            return Err(EnvError::InvalidArgvPointer);
+        }
+
+        trace!("try read computed argv[0]");
+        let comp_frist = CStr::from_ptr(*comp_argv);
+        let given_first_arg_for_print = OsStr::from_bytes(given_first_arg);
+        trace!("computed argv[0]={comp_frist:?}, given argv[0]={given_first_arg_for_print:?}");
+        if comp_frist.to_bytes() == given_first_arg {
+            Ok((argc, comp_argv))
+        } else {
+            Err(EnvError::InvalidArgvPointer)
+        }
+    }
 }
 
 // from: https://github.com/leo60228/libargs/blob/master/src/lib.rs#L16-L30
@@ -59,52 +125,6 @@ fn from_stack_walking(environ: *const *const c_char) -> (usize, *const *const c_
         }
         walk_environ = walk_environ.wrapping_sub(1);
         i += 1;
-    }
-}
-
-fn comp_argv() -> Result<(usize, *const *const i8), EnvError> {
-    let envp = unsafe { envptr().ok_or(EnvError::FailedToGetArgvPointer) }?;
-
-    if cfg!(feature = "force_walking") {
-        debug!("forge walking...");
-        return Ok(from_stack_walking(envp));
-    } else {
-        use std::{
-            env::args_os,
-            ffi::{CStr, OsStr},
-            os::unix::ffi::OsStrExt,
-        };
-        let mut args = args_os();
-        trace!("std args: {:#?}", &args);
-        if args.len() == 0 {
-            debug!("std args is empty, try stack walking...");
-            if cfg!(feature = "stack_walking") {
-                return Ok(from_stack_walking(envp));
-            } else {
-                return Err(EnvError::FailedToGetArgvPointer);
-            }
-        }
-
-        let std_argc = args.len();
-        // *environ[] == *argv[] + argc + 1, aka
-        // *argv[] = *environ[] - (argc + 1)
-        unsafe {
-            let comp_argv = envp.sub(std_argc + 1);
-            trace!("environ={envp:?}, std argc={std_argc:?}, computed argv={comp_argv:?}, point to: {:?}", (*comp_argv));
-            if comp_argv.is_null() || (*comp_argv).is_null() {
-                return Err(EnvError::InvalidArgvPointer);
-            }
-
-            let frist = args.next().ok_or(EnvError::InvalidArgvPointer)?;
-            trace!("try read computed argv[0]");
-            let argv_frist = OsStr::from_bytes(CStr::from_ptr(*comp_argv).to_bytes());
-            trace!("computed argv[0]={argv_frist:?}, std argv[0]={frist:?}");
-            if argv_frist == frist {
-                Ok((std_argc, comp_argv))
-            } else {
-                Err(EnvError::InvalidArgvPointer)
-            }
-        }
     }
 }
 
