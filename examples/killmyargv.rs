@@ -13,7 +13,7 @@ use spdlog::{
 
 fn main() {
     init_log_crate_proxy().expect("users should only call `init_log_crate_proxy` function once");
-    set_max_level(LevelFilter::Trace);
+    set_max_level(LevelFilter::Debug);
     let logger: Arc<Logger> = default_logger();
     logger.set_level_filter(spdlog::LevelFilter::All);
     let formatter = Box::new(PatternFormatter::new(pattern!(
@@ -51,8 +51,10 @@ fn main() {
     let (d_argc, d_argv) = unsafe { direct_argc_argv() };
     info!("direct argc: {}, argv: {:?}", d_argc, d_argv);
 
-    mem.set("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee????\n".as_bytes());
-    info!("set gr argv");
+    info!("cmdline max len: {}", mem.max_len());
+    let s = "a".repeat(mem.max_len()) + "\n";
+    mem.set(s.as_bytes());
+    info!("set max_len() + 1 args");
     printenv();
     pause!();
 
@@ -64,30 +66,25 @@ fn main() {
         }
         Err(e) => error!("reget addrs err: {e}"),
     }
-    info!("cmdline max len: {}", mem.max_len());
-    mem.set("char_vec!".as_bytes());
+    mem.set(b"char_vec!");
     set_var("key", "value");
-    info!("set le argv and env");
+    info!("set 9 char args and env");
     printenv();
     pause!();
 
     mem.revert();
-    info!("revert argv");
+    info!("revert args");
     printenv();
     pause!();
 
-    mem.set(b"aaaaaaaaaaaaaaaaaaaa\0bbbbb12\09988");
-    info!("set le argv");
+    let s = "a".repeat(20) + "\0" + "bbbbb12" + "\0" + "9988";
+    mem.set(s.as_bytes());
+    info!("set 32 chars args with two null char");
     printenv();
     pause!();
 
     mem.set("a".repeat(6144).as_bytes());
-    info!("try set 6144 bytes to argv");
-    printenv();
-    pause!();
-
-    mem.revert();
-    info!("revert argv");
+    info!("set 6144 bytes args");
     printenv();
     pause!();
 
@@ -98,7 +95,7 @@ fn main() {
         // but currently only nonul_byte is checked for null.
         s[nonul_byte - 1] = 0;
         mem.set(&s);
-        info!("try set 6144(nonul_byte is null) bytes to argv");
+        info!("set 6144(nonul_byte is null) bytes args");
         printenv();
         pause!();
     }
