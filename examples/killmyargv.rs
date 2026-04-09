@@ -1,6 +1,7 @@
 use killmyargv::{argv_addrs, direct_argc_argv, KillMyArgv};
 
 use std::env::{args, set_var, vars_os};
+use std::process::{self, Command};
 use std::sync::Arc;
 
 use log::{debug, error, info, set_max_level, warn, LevelFilter};
@@ -9,6 +10,12 @@ use spdlog::{
     default_logger,
     formatter::{pattern, PatternFormatter},
     init_log_crate_proxy, Logger,
+};
+
+const PS_CMD: &str = if cfg!(any(target_os = "illumos", target_os = "solaris")) {
+    "ps -F -o user,pid,ppid,tty,s,time,comm,args -p"
+} else {
+    "ps -o user,pid,ppid,tty,stat,time,comm,args"
 };
 
 fn main() {
@@ -35,17 +42,16 @@ fn main() {
         Err(e) => error!("frist get addrs err: {e}"),
     }
 
+    let this_in_stack = 0u8;
+    let this_by_alloc = Box::new(0u8);
+    let this_in_data = "\0";
+    info!(
+        "some in stack: {:p}, some by alloc: {:p}, some in data: {:p}",
+        &this_in_stack,
+        this_by_alloc,
+        this_in_data.as_ptr()
+    );
     let mem = KillMyArgv::new().expect("try init fail");
-    fn printenv() {
-        if false {
-            for i in args() {
-                debug!("std arg: {i:?}");
-            }
-            for (k, v) in vars_os() {
-                debug!("std env_os k&v: {k:?}={v:?}");
-            }
-        }
-    }
     pause!();
 
     let (d_argc, d_argv) = unsafe { direct_argc_argv() };
@@ -56,6 +62,7 @@ fn main() {
     mem.set(s.as_bytes());
     info!("set max_len() + 1 args");
     printenv();
+    printps();
     pause!();
 
     warn!("Now you can get the correct address via argv_addrs() after initialization");
@@ -70,22 +77,26 @@ fn main() {
     set_var("key", "value");
     info!("set 9 char args and env");
     printenv();
+    printps();
     pause!();
 
     mem.revert();
     info!("revert args");
     printenv();
+    printps();
     pause!();
 
     let s = "a".repeat(20) + "\0" + "bbbbb12" + "\0" + "9988";
     mem.set(s.as_bytes());
     info!("set 32 chars args with two null char");
     printenv();
+    printps();
     pause!();
 
     mem.set("a".repeat(6144).as_bytes());
     info!("set 6144 bytes args");
     printenv();
+    printps();
     pause!();
 
     if let Some(nonul_byte) = mem.nonul_byte() {
@@ -97,7 +108,35 @@ fn main() {
         mem.set(&s);
         info!("set 6144(nonul_byte is null) bytes args");
         printenv();
+        printps();
         pause!();
     }
+
+    info!(
+        "say again, some in stack: {:p}, some by alloc: {:p}, some in data: {:p}",
+        &this_in_stack,
+        this_by_alloc,
+        this_in_data.as_ptr()
+    );
+    pause!();
+
     error!("The end.");
+}
+
+fn printenv() {
+    if false {
+        for i in args() {
+            debug!("std arg: {i:?}");
+        }
+        for (k, v) in vars_os() {
+            debug!("std env_os k&v: {k:?}={v:?}");
+        }
+    }
+}
+fn printps() {
+    let cmd = Command::new("sh")
+        .args(&["-c", &format!("{} {}", PS_CMD, process::id())])
+        .output()
+        .expect("failed to execute ps command");
+    warn!("ps output:\n{}", String::from_utf8_lossy(&cmd.stdout));
 }
