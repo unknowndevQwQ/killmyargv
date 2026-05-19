@@ -37,3 +37,11 @@ force_walking = [
 ]
 replace_argv_element = []
 replace_environ_element = []
+
+# `panic = unwind` cannot retrieve the coredump; to check the coredump after a panic, it must be changed to `abort`.
+# However, this affects backtrace.
+# see: https://github.com/rust-lang/backtrace-rs/issues/397
+[profile.dev]
+panic = "abort"
+[profile.release]
+panic = "abort"
