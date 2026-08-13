@@ -43,6 +43,8 @@ pub enum EnvError {
     PonitToNull { ptr: *const *const c_char },
     #[error("The pointer as null.")]
     NullPointer,
+    #[error("The pointer `{ptr:?}` points to a non-contiguous range of addresses.")]
+    NonContiguousRange { ptr: *const *const c_char },
 }
 
 unsafe impl Send for EnvError {}
@@ -228,6 +230,26 @@ pub unsafe fn direct_environ() -> *mut *const *const c_char {
     env_addr::environ()
 }
 
+/// For debugging purposes only, at least for today.
+impl MemInfo {
+    /// Get the range of each parameter string,
+    /// including the NUL terminator character at the end address,
+    /// but excluding the length value.
+    pub fn cstr_range(&self) -> Vec<(*const *const c_char, *const c_char, *const c_char, usize)> {
+        let mut ranges = Vec::with_capacity(self.count);
+        for i in 0..self.count {
+            let (upptr, ptr) = unsafe { (self.ptr.add(i), self.ptr.add(i).read()) };
+            if ptr.is_null() {
+                warn!("the string[{i}] is null, pls check");
+                break;
+            }
+            let cstr_len = unsafe { CStr::from_ptr(ptr) }.to_bytes().len();
+            ranges.push((upptr, ptr, unsafe { ptr.add(cstr_len + 1) }, cstr_len));
+        }
+        ranges
+    }
+}
+
 impl KillMyArgv {
     /// Get the argument strings start address and without end NUL character end address.
     pub fn argv_addrs(&self) -> (*mut u8, *mut u8) {
@@ -239,7 +261,17 @@ impl KillMyArgv {
         let argv_mem = from_argv()?;
         let argv_saved = save_string(argv_mem.count, argv_mem.ptr);
         // It can be replaced by std::ptr::sub_ptr() in the future.
-        let argv_len = unsafe { argv_mem.end_addr.offset_from(argv_mem.begin_addr) as usize };
+        let argv_len = unsafe {
+            argv_mem
+                .end_addr
+                .offset_from(argv_mem.begin_addr)
+                .try_into()
+                .map_err(|e| {
+                    debug!("argv_mem cstr range: {:#?}", argv_mem.cstr_range());
+                    error!("Failed to convert argv offset to usize: {}", e);
+                    EnvError::NonContiguousRange { ptr: argv_mem.ptr }
+                })?
+        };
 
         trace!("argv struct: {argv_mem:#?}, saved: {argv_saved:#?}, len={argv_len}");
         if cfg!(feature = "replace_argv_element") {
@@ -268,10 +300,19 @@ impl KillMyArgv {
         }
         if argv_len < OS_MAX_LEN_LIMIT {
             if let Some(env_mem) = from_env() {
-                if unsafe { argv_mem.end_addr.add(1) } == env_mem.begin_addr {
+                // I believe the best approach would be to check
+                // if the entire `environ` range is on the stack and contiguous;
+                // if not, remove the last string address and retry.
+                // However, I haven't found a convenient and low-dependency library for checking address ranges.
+                let (expected_env_mem_begin, pre_env_len) = unsafe {
+                    (
+                        argv_mem.end_addr.add(1),
+                        env_mem.end_addr.offset_from(env_mem.begin_addr),
+                    )
+                };
+                if expected_env_mem_begin == env_mem.begin_addr && pre_env_len > 0 {
                     let env_saved = save_string(env_mem.count, env_mem.ptr);
-                    let env_len =
-                        unsafe { env_mem.end_addr.offset_from(env_mem.begin_addr) as usize };
+                    let env_len = pre_env_len as usize;
                     trace!("env struct: {env_mem:#?}, saved: {env_saved:#?}, len={env_len}");
                     #[allow(unused)]
                     #[cfg(all(feature = "clobber_environ", feature = "replace_environ_element"))]
@@ -297,12 +338,17 @@ impl KillMyArgv {
                         saved_argv: argv_saved,
                         nonul_byte: Some(argv_len + 1),
                     });
+                } else if expected_env_mem_begin != env_mem.begin_addr {
+                    warn!(
+                        "argv end addr + 1({:?}) != env begin addr({:?}), argv to env memory may not be continuous",
+                        unsafe { argv_mem.end_addr.add(1) }, env_mem.begin_addr
+                    );
+                } else {
+                    debug!("env string memory range: {:#?}", env_mem.cstr_range());
+                    warn!(
+                        "env length less than or equal to 0 zero,env memory may not be continuous."
+                    );
                 }
-
-                warn!(
-                    "argv end addr + 1({:?}) != env begin addr({:?}), the memory may not be continuous",
-                    unsafe { argv_mem.end_addr.add(1) }, env_mem.begin_addr
-                );
             }
         }
         Ok(KillMyArgv {
