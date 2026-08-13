@@ -268,33 +268,41 @@ impl KillMyArgv {
         }
         if argv_len < OS_MAX_LEN_LIMIT {
             if let Some(env_mem) = from_env() {
-                let env_saved = save_string(env_mem.count, env_mem.ptr);
-                let env_len = unsafe { env_mem.end_addr.offset_from(env_mem.begin_addr) as usize };
-                trace!("env struct: {env_mem:#?}, saved: {env_saved:#?}, len={env_len}");
-                #[allow(unused)]
-                #[cfg(all(feature = "clobber_environ", feature = "replace_environ_element"))]
-                // I haven't decided if I want to remove it or not,
-                // since setenv makes it probably unnecessary.
-                let mut new_envp = env_saved
-                    .iter()
-                    .map(|s| s.as_ptr())
-                    .collect::<Vec<*const c_char>>();
+                if unsafe { argv_mem.end_addr.add(1) } == env_mem.begin_addr {
+                    let env_saved = save_string(env_mem.count, env_mem.ptr);
+                    let env_len =
+                        unsafe { env_mem.end_addr.offset_from(env_mem.begin_addr) as usize };
+                    trace!("env struct: {env_mem:#?}, saved: {env_saved:#?}, len={env_len}");
+                    #[allow(unused)]
+                    #[cfg(all(feature = "clobber_environ", feature = "replace_environ_element"))]
+                    // I haven't decided if I want to remove it or not,
+                    // since setenv makes it probably unnecessary.
+                    let mut new_envp = env_saved
+                        .iter()
+                        .map(|s| s.as_ptr())
+                        .collect::<Vec<*const c_char>>();
 
-                // Using std instead of manually replacing each element in environ
-                // is just being lazy.
-                #[cfg(all(feature = "clobber_environ", feature = "replace_environ_element"))]
-                for (key, value) in vars_os() {
-                    remove_var(&key);
-                    set_var(key, value); // Expected: libc::setenv(key, value, 1)
+                    // Using std instead of manually replacing each element in environ
+                    // is just being lazy.
+                    #[cfg(all(feature = "clobber_environ", feature = "replace_environ_element"))]
+                    for (key, value) in vars_os() {
+                        remove_var(&key);
+                        set_var(key, value); // Expected: libc::setenv(key, value, 1)
+                    }
+
+                    return Ok(KillMyArgv {
+                        begin_addr: argv_mem.begin_addr as *mut u8,
+                        end_addr: env_mem.end_addr as *mut u8,
+                        max_len: cmp::min(argv_len + 1 + env_len, OS_MAX_LEN_LIMIT),
+                        saved_argv: argv_saved,
+                        nonul_byte: Some(argv_len + 1),
+                    });
                 }
 
-                return Ok(KillMyArgv {
-                    begin_addr: argv_mem.begin_addr as *mut u8,
-                    end_addr: env_mem.end_addr as *mut u8,
-                    max_len: cmp::min(argv_len + 1 + env_len, OS_MAX_LEN_LIMIT),
-                    saved_argv: argv_saved,
-                    nonul_byte: Some(argv_len + 1),
-                });
+                warn!(
+                    "argv end addr + 1({:?}) != env begin addr({:?}), the memory may not be continuous",
+                    unsafe { argv_mem.end_addr.add(1) }, env_mem.begin_addr
+                );
             }
         }
         Ok(KillMyArgv {
